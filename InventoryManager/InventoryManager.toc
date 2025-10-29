@@ -1,0 +1,10 @@
+## Interface: 30300
+## Title: Inventory Manager
+## Notes: Intelligently manages inventory space with smart deletion recommendations
+## Author: Jugglo187/Skuly
+## Version: 1.0
+## SavedVariablesPerCharacter: IM_ConfigDB, IM_FramePositions, IM_VendorListDB, IM_IgnoredListDB, IM_AutoDeleteListDB, IM_ToggleIconPosition, IM_DeletionLogDB
+
+InventoryManager.lua
+InventoryManager_Config.lua
+InventoryManager_Frames.lua
