@@ -295,8 +295,15 @@ function IM:ShowDeletionLogFrame()
     if not IM_DeletionLogFrame then
         self:CreateDeletionLogFrame()
     end
-    self:UpdateDeletionLogFrame(0) -- Default to current session
-    -- No need to set tabs here since CreateDeletionLogFrame already sets the first one
+    
+    if IM_DeletionLogFrame.tabs and IM_DeletionLogFrame.tabs[1] then
+        for _, tab in ipairs(IM_DeletionLogFrame.tabs) do
+            tab:Enable()
+        end
+        IM_DeletionLogFrame.tabs[1]:Disable()
+    end
+    
+    self:UpdateDeletionLogFrame(12)
     IM_DeletionLogFrame:Show()
 end
 
@@ -318,39 +325,45 @@ function IM:UpdateDeletionLogFrame(hours)
     
     local deletions = self:GetDeletionsForTimeRange(hours)
     
-    -- Group deletions by itemID and deletionType
     local groupedDeletions = {}
-    for _, deletion in ipairs(deletions) do
-        local key = deletion.itemID .. "_" .. (deletion.deletionType or "manual")
-        
-        if not groupedDeletions[key] then
-            -- Create a new grouped entry
-            groupedDeletions[key] = {
-                itemLink = deletion.itemLink,
-                itemID = deletion.itemID,
-                itemCount = deletion.itemCount,
-                deletionType = deletion.deletionType or "manual",
-                timestamp = deletion.timestamp, -- Keep the most recent timestamp
-                instances = 1 -- Count how many times this item was deleted
-            }
-        else
-            -- Combine with existing grouped entry
-            groupedDeletions[key].itemCount = groupedDeletions[key].itemCount + deletion.itemCount
-            groupedDeletions[key].instances = groupedDeletions[key].instances + 1
-            -- Update to the most recent timestamp
-            if deletion.timestamp > groupedDeletions[key].timestamp then
-                groupedDeletions[key].timestamp = deletion.timestamp
-            end
-        end
-    end
+	for _, deletion in ipairs(deletions) do
+		-- Skip entries with nil itemID and log only once per unique issue
+		if not deletion or not deletion.itemID then
+			-- Only print the warning once to avoid spam
+			if not groupedDeletions._nilWarningShown then
+				print("Inventory Manager: Skipping deletion entry with nil itemID")
+				groupedDeletions._nilWarningShown = true
+			end
+		else
+			local key = deletion.itemID .. "_" .. (deletion.deletionType or "manual")
+				
+			if not groupedDeletions[key] then
+				-- Create a new grouped entry
+				groupedDeletions[key] = {
+					itemLink = deletion.itemLink,
+					itemID = deletion.itemID,
+					itemCount = deletion.itemCount,
+					deletionType = deletion.deletionType or "manual",
+					timestamp = deletion.timestamp, -- Keep the most recent timestamp
+					instances = 1 -- Count how many times this item was deleted
+				}
+			else
+				-- Combine with existing grouped entry
+				groupedDeletions[key].itemCount = groupedDeletions[key].itemCount + deletion.itemCount
+				groupedDeletions[key].instances = groupedDeletions[key].instances + 1
+				-- Update to the most recent timestamp
+				if deletion.timestamp > groupedDeletions[key].timestamp then
+					groupedDeletions[key].timestamp = deletion.timestamp
+				end
+			end
+		end
+	end
     
-    -- Convert back to array for display
     local displayDeletions = {}
     for _, groupedDeletion in pairs(groupedDeletions) do
         table.insert(displayDeletions, groupedDeletion)
     end
     
-    -- Sort by most recent first
     table.sort(displayDeletions, function(a, b)
         return a.timestamp > b.timestamp
     end)
@@ -471,39 +484,50 @@ function IM:CreateDeletionLogFrame()
     -- Time filter tabs - using proper WoW 3.3.5 tab templates
     frame.tabs = {}
     local tabTimes = {
-        {label = "Session", hours = 0},
+		{label = "12h", hours = 12},
+		{label = "24 Hours", hours = 24},
+		{label = "7 Days", hours = 168},
+		{label = "30 Days", hours = 720}
+	}
+    
+        frame.tabs = {}
+    local tabTimes = {
+        {label = "Session (12h)", hours = 12},
         {label = "24 Hours", hours = 24},
         {label = "7 Days", hours = 168},
         {label = "30 Days", hours = 720}
     }
     
     for i, tabInfo in ipairs(tabTimes) do
-    local tab = CreateFrame("Button", "IM_DeletionLogTab_"..i, frame, "OptionsFrameTabButtonTemplate")
-    tab:SetText(tabInfo.label)
-    tab:SetWidth(80)
-    
-    if i == 1 then
-        tab:SetPoint("TOPLEFT", 10, -30)
-    else
-        tab:SetPoint("LEFT", frame.tabs[i-1], "RIGHT", -15, 0)
+        local tab = CreateFrame("Button", "IM_DeletionLogTab_"..i, frame, "OptionsFrameTabButtonTemplate")
+        tab:SetText(tabInfo.label)
+        tab:SetWidth(90)  -- Slightly wider to fit "Session (12h)"
+        
+        if i == 1 then
+            tab:SetPoint("TOPLEFT", 10, -30)
+        else
+            tab:SetPoint("LEFT", frame.tabs[i-1], "RIGHT", -15, 0)
+        end
+        
+        PanelTemplates_TabResize(tab, 0)
+        
+        -- Store the hours value and index for this tab
+        tab.hours = tabInfo.hours
+        tab.index = i
+        
+        tab:SetScript("OnClick", function(self)
+            -- Enable all tabs first
+            for _, otherTab in ipairs(frame.tabs) do
+                otherTab:Enable()
+            end
+            -- Disable the clicked tab to show it's active
+            self:Disable()
+            -- Update the content
+            IM:UpdateDeletionLogFrame(self.hours)
+        end)
+        
+        frame.tabs[i] = tab
     end
-    
-    PanelTemplates_TabResize(tab, 0)
-    
-    -- Store the hours value for this tab
-    tab.hours = tabInfo.hours
-    
-    tab:SetScript("OnClick", function(self)
-        IM:UpdateDeletionLogFrame(self.hours)
-        --PanelTemplates_SetTab(frame, i)
-    end)
-    
-    frame.tabs[i] = tab
-end
-
--- This is crucial for OptionsFrameTabButtonTemplate to work
-PanelTemplates_SetNumTabs(frame, #tabTimes)
-PanelTemplates_UpdateTabs(frame)
     
     -- Set first tab as active by default
     if frame.tabs[1] then
@@ -1169,9 +1193,14 @@ end
 function IM:UpdateAutoDeleteListFrame()
     if not IM_AutoDeleteListFrame then return end
     
-    self:ClearFrameContent(IM_AutoDeleteListFrame.content, "IM_AutoDeleteItem_")
+    -- Ensure autoDeleteList exists and is valid
+    if not self.autoDeleteList then
+        self.autoDeleteList = {}
+    end
     
-    self.autoDeleteList = self.autoDeleteList or {}
+    -- Clean up invalid entries before displaying
+    self:ValidateAutoDeleteList()
+    
     local contentHeight = math.max(400, #self.autoDeleteList * 45 + 10)
     IM_AutoDeleteListFrame.content:SetHeight(contentHeight)
     
@@ -1179,71 +1208,82 @@ function IM:UpdateAutoDeleteListFrame()
     IM_AutoDeleteListFrame.title:SetText(string.format("Auto-Delete List (%d items)", #self.autoDeleteList))
     
     for i, autoDeleteItem in ipairs(self.autoDeleteList) do
-        local widget = _G["IM_AutoDeleteItem_"..i] or CreateFrame("Button", "IM_AutoDeleteItem_"..i, IM_AutoDeleteListFrame.content)
-        widget:SetSize(350, 40)
-        
-        if not widget.initialized then
-            widget:SetPoint("TOPLEFT", 5, -(i-1)*45)
-            widget.bg = widget:CreateTexture(nil, "BACKGROUND")
-            widget.bg:SetAllPoints(true)
-            widget.bg:SetTexture(0.1, 0.1, 0.1, 0.7)
-            widget.icon = widget:CreateTexture(nil, "ARTWORK")
-            widget.icon:SetSize(30, 30)
-            widget.icon:SetPoint("LEFT", 5, 0)
-            widget.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-            widget.name = widget:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            widget.name:SetPoint("TOPLEFT", 40, -5)
-            widget.name:SetSize(200, 20)
-            widget.name:SetJustifyH("LEFT")
-            widget.status = widget:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            widget.status:SetPoint("BOTTOMLEFT", 40, 5)
-            widget.status:SetSize(200, 20)
-            widget.status:SetJustifyH("LEFT")
-            widget.removeBtn = CreateFrame("Button", nil, widget, "UIPanelButtonTemplate")
-            widget.removeBtn:SetSize(60, 20)
-            widget.removeBtn:SetPoint("RIGHT", -5, 0)
-            widget.removeBtn:SetText("Remove")
-            widget.initialized = true
-        end
-        
-        local texture = GetItemIcon(autoDeleteItem.itemID) or "Interface\\Icons\\INV_Misc_QuestionMark"
-        widget.icon:SetTexture(texture)
-        local qualityColor = self.qualityColors[autoDeleteItem.quality] or "|cFFFFFFFF"
-        
-        -- SIMPLIFIED: Just show the item name, no count needed
-        widget.name:SetText(qualityColor .. (autoDeleteItem.displayName or autoDeleteItem.name) .. "|r")
-        widget.status:SetText("Auto-delete when looted")
-        
-        if autoDeleteItem.quality and self.qualityColors[autoDeleteItem.quality] then
-            local color = self.qualityColors[autoDeleteItem.quality]
-            local hex = color:sub(3)
-            local r = tonumber(hex:sub(1, 2), 16) / 255
-            local g = tonumber(hex:sub(3, 4), 16) / 255
-            local b = tonumber(hex:sub(5, 6), 16) / 255
-            widget.bg:SetTexture(r * 0.1, g * 0.1, b * 0.1, 0.3)
+        -- Double-check that itemID exists to prevent errors
+        if not autoDeleteItem or not autoDeleteItem.itemID then
+            print("Inventory Manager: Skipping invalid auto-delete item at index " .. i)
         else
-            widget.bg:SetTexture(0.1, 0.1, 0.1, 0.7)
-        end
-        
-        widget:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if autoDeleteItem.link then
-                GameTooltip:SetHyperlink(autoDeleteItem.link)
-            else
-                GameTooltip:SetText(autoDeleteItem.name)
+            local widget = _G["IM_AutoDeleteItem_"..i] or CreateFrame("Button", "IM_AutoDeleteItem_"..i, IM_AutoDeleteListFrame.content)
+            widget:SetSize(350, 40)
+            
+            if not widget.initialized then
+                widget:SetPoint("TOPLEFT", 5, -(i-1)*45)
+                widget.bg = widget:CreateTexture(nil, "BACKGROUND")
+                widget.bg:SetAllPoints(true)
+                widget.bg:SetTexture(0.1, 0.1, 0.1, 0.7)
+                widget.icon = widget:CreateTexture(nil, "ARTWORK")
+                widget.icon:SetSize(30, 30)
+                widget.icon:SetPoint("LEFT", 5, 0)
+                widget.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+                widget.name = widget:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                widget.name:SetPoint("TOPLEFT", 40, -5)
+                widget.name:SetSize(200, 20)
+                widget.name:SetJustifyH("LEFT")
+                widget.status = widget:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                widget.status:SetPoint("BOTTOMLEFT", 40, 5)
+                widget.status:SetSize(200, 20)
+                widget.status:SetJustifyH("LEFT")
+                widget.removeBtn = CreateFrame("Button", nil, widget, "UIPanelButtonTemplate")
+                widget.removeBtn:SetSize(60, 20)
+                widget.removeBtn:SetPoint("RIGHT", -5, 0)
+                widget.removeBtn:SetText("Remove")
+                widget.initialized = true
             end
-            GameTooltip:AddLine("This item will be automatically deleted when looted", 1, 0.5, 0.5)
-            GameTooltip:AddLine("Item ID: " .. autoDeleteItem.itemID, 0.8, 0.8, 0.8)
-            GameTooltip:Show()
-        end)
-        widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        
-        widget.removeBtn:SetScript("OnClick", function()
-            IM:RemoveFromAutoDeleteList(autoDeleteItem.itemID)
-        end)
-        
-        widget:Show()
-        widget.autoDeleteItem = autoDeleteItem
+            
+            -- Safe texture loading
+            local texture = GetItemIcon(autoDeleteItem.itemID)
+            if not texture then
+                texture = "Interface\\Icons\\INV_Misc_QuestionMark"
+            end
+            widget.icon:SetTexture(texture)
+            
+            local qualityColor = self.qualityColors[autoDeleteItem.quality] or "|cFFFFFFFF"
+            local displayName = autoDeleteItem.displayName or autoDeleteItem.name or "Unknown Item"
+            
+            widget.name:SetText(qualityColor .. displayName .. "|r")
+            widget.status:SetText("Auto-delete when looted")
+            
+            -- Safe quality color application
+            if autoDeleteItem.quality and self.qualityColors[autoDeleteItem.quality] then
+                local color = self.qualityColors[autoDeleteItem.quality]
+                local hex = color:sub(3)
+                local r = tonumber(hex:sub(1, 2), 16) / 255
+                local g = tonumber(hex:sub(3, 4), 16) / 255
+                local b = tonumber(hex:sub(5, 6), 16) / 255
+                widget.bg:SetTexture(r * 0.1, g * 0.1, b * 0.1, 0.3)
+            else
+                widget.bg:SetTexture(0.1, 0.1, 0.1, 0.7)
+            end
+            
+            widget:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                if autoDeleteItem.link then
+                    GameTooltip:SetHyperlink(autoDeleteItem.link)
+                else
+                    GameTooltip:SetText(displayName)
+                end
+                GameTooltip:AddLine("This item will be automatically deleted when looted", 1, 0.5, 0.5)
+                GameTooltip:AddLine("Item ID: " .. autoDeleteItem.itemID, 0.8, 0.8, 0.8)
+                GameTooltip:Show()
+            end)
+            widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            
+            widget.removeBtn:SetScript("OnClick", function()
+                IM:RemoveFromAutoDeleteList(autoDeleteItem.itemID)
+            end)
+            
+            widget:Show()
+            widget.autoDeleteItem = autoDeleteItem
+        end
     end
     
     IM_AutoDeleteListFrame.scroll:UpdateScrollChildRect()
@@ -1261,12 +1301,16 @@ function IM:UpdateMainFrame(suggestions, totalSlots, usedSlots)
     local totalValue = 0
     
     for _, suggestion in ipairs(suggestions) do
-        totalValue = totalValue + suggestion.stackValue
-        -- Count each unique bag/slot location as one slot
-        for _, location in ipairs(suggestion.locations) do
-            totalSlotsFreed = totalSlotsFreed + 1
-        end
-    end
+		totalValue = totalValue + (suggestion.stackValue or 0)
+		-- Count each unique bag/slot location as one slot
+		if suggestion.locations then
+			for _, location in ipairs(suggestion.locations) do
+				if location and location.bag and location.slot then
+					totalSlotsFreed = totalSlotsFreed + 1
+				end
+			end
+		end
+	end
     
     -- Update summary text
     local totalCopper = math.floor(totalValue * 10000 + 0.5)
@@ -1513,6 +1557,11 @@ function IM:ClearFrameContent(frame, prefix)
 end
 
 function IM:CreateDeleteSuggestionWidget(suggestion, index)
+    if not suggestion or not suggestion.itemID then
+        print("Inventory Manager: Cannot create widget for invalid suggestion")
+        return
+    end
+    
     local parent = IM_MainFrame.deleteContent
     local widget = _G["IM_DeleteItem_"..index] or CreateFrame("Button", "IM_DeleteItem_"..index, parent)
     widget:SetSize(450, 40)
@@ -1547,35 +1596,37 @@ function IM:CreateDeleteSuggestionWidget(suggestion, index)
         
         widget.deleteBtn = CreateFrame("Button", nil, widget, "UIPanelButtonTemplate")
         widget.deleteBtn:SetSize(45, 20)
-        --widget.deleteBtn:SetPoint("RIGHT", -50, 0)
-		widget.deleteBtn:SetPoint("RIGHT", widget.vendorBtn, "LEFT", 0, 0)
+        widget.deleteBtn:SetPoint("RIGHT", widget.vendorBtn, "LEFT", 0, 0)
         widget.deleteBtn:SetText("Delete")
         
         widget.ignoreBtn = CreateFrame("Button", nil, widget, "UIPanelButtonTemplate")
         widget.ignoreBtn:SetSize(45, 20)
-        --widget.ignoreBtn:SetPoint("RIGHT", -95, 0)
-		widget.ignoreBtn:SetPoint("RIGHT", widget.deleteBtn, "LEFT", 0, 0)
+        widget.ignoreBtn:SetPoint("RIGHT", widget.deleteBtn, "LEFT", 0, 0)
         widget.ignoreBtn:SetText("Ignore")
         
         widget.autoDeleteBtn = CreateFrame("Button", nil, widget, "UIPanelButtonTemplate")
         widget.autoDeleteBtn:SetSize(35, 20)
-        --widget.autoDeleteBtn:SetPoint("RIGHT", -140, 0)
-		widget.autoDeleteBtn:SetPoint("RIGHT", widget.ignoreBtn, "LEFT", 0, 0)
+        widget.autoDeleteBtn:SetPoint("RIGHT", widget.ignoreBtn, "LEFT", 0, 0)
         widget.autoDeleteBtn:SetText("Auto")
         
         widget.initialized = true
     end
     
+    -- Safe field access with fallbacks
     local texture = GetItemIcon(suggestion.itemID) or "Interface\\Icons\\INV_Misc_QuestionMark"
     widget.icon:SetTexture(texture)
-    local qualityColor = self.qualityColors[suggestion.quality] or "|cFFFFFFFF"
-    local countText = suggestion.totalCount > 1 and string.format("(|cFFFFFFFFx%d|r)", suggestion.totalCount) or ""
-    widget.name:SetText(qualityColor .. (suggestion.displayName or suggestion.name) .. "|r " .. countText)
-    local totalCopper = math.floor(suggestion.stackValue * 10000 + 0.5)
+    
+    local qualityColor = self.qualityColors[suggestion.quality or 1] or "|cFFFFFFFF"
+    local countText = (suggestion.totalCount or 1) > 1 and string.format("(|cFFFFFFFFx%d|r)", suggestion.totalCount) or ""
+    local displayName = suggestion.displayName or suggestion.name or "Unknown Item"
+    widget.name:SetText(qualityColor .. displayName .. "|r " .. countText)
+    
+    local totalCopper = math.floor((suggestion.stackValue or 0) * 10000 + 0.5)
     local valueText = self:FormatMoneyWithIcons(totalCopper)
     widget.value:SetText("|cFFFFFF00" .. valueText .. "|r")
-    widget.reason:SetText(suggestion.reason)
+    widget.reason:SetText(suggestion.reason or "Unknown reason")
     
+    -- Safe quality color application
     if suggestion.quality and self.qualityColors[suggestion.quality] then
         local color = self.qualityColors[suggestion.quality]
         local hex = color:sub(3)
@@ -1592,38 +1643,56 @@ function IM:CreateDeleteSuggestionWidget(suggestion, index)
         if suggestion.link then
             GameTooltip:SetHyperlink(suggestion.link)
         else
-            GameTooltip:SetText(suggestion.name)
+            GameTooltip:SetText(displayName)
         end
-        GameTooltip:AddLine("Reason: " .. suggestion.reason, 1, 1, 1)
-        local totalCopper = suggestion.stackValue * 10000
+        GameTooltip:AddLine("Reason: " .. (suggestion.reason or "Unknown reason"), 1, 1, 1)
+        local totalCopper = (suggestion.stackValue or 0) * 10000
         local valueText = IM:FormatMoneyWithIcons(totalCopper)
         GameTooltip:AddLine("Total Value: " .. valueText, 1, 1, 1)
-        if suggestion.totalCount > 1 then
+        if (suggestion.totalCount or 1) > 1 then
             local perItemCopper = (suggestion.sellPrice or 0)
             local perItemText = IM:FormatMoneyWithIcons(perItemCopper)
             GameTooltip:AddLine("Per Item: " .. perItemText, 0.8, 0.8, 0.8)
         end
         GameTooltip:Show()
     end)
+    
     widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
+    -- Button handlers with safety checks (you already have these)
     widget.vendorBtn:SetScript("OnClick", function()
-        IM:AddToVendorList(suggestion)
-        IM:RefreshUI()
+        if suggestion and suggestion.itemID then
+            IM:AddToVendorList(suggestion)
+            IM:RefreshUI()
+        else
+            print("Inventory Manager: Cannot add invalid item to vendor list")
+        end
     end)
     
     widget.deleteBtn:SetScript("OnClick", function()
-        IM:ConfirmDeleteSuggestion(suggestion)
+        if suggestion and suggestion.itemID then
+            IM:ConfirmDeleteSuggestion(suggestion)
+        else
+            print("Inventory Manager: Cannot delete invalid item")
+        end
     end)
     
     widget.ignoreBtn:SetScript("OnClick", function()
-        IM:AddToIgnoredList(suggestion)
-        IM:RefreshUI()
+        if suggestion and suggestion.itemID then
+            IM:AddToIgnoredList(suggestion)
+            IM:RefreshUI()
+        else
+            print("Inventory Manager: Cannot ignore invalid item")
+        end
     end)
     
     widget.autoDeleteBtn:SetScript("OnClick", function()
-        IM:AddToAutoDeleteList(suggestion)
-        IM:RefreshUI()
+        if suggestion and suggestion.itemID then
+            IM:AddToAutoDeleteList(suggestion)
+            IM:RefreshUI()
+        else
+            print("Inventory Manager: Cannot auto-delete invalid item")
+        end
     end)
     
     widget:Show()

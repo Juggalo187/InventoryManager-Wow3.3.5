@@ -141,6 +141,70 @@ IM.autoDeleteList = {}
 IM_AutoDeleteListDB = IM.autoDeleteList
 
 -- Utility functions
+function IM:ScheduleCleanup()
+    if not self.cleanupTimer then
+        self.cleanupTimer = CreateFrame("Frame")
+        self.cleanupTimer:SetScript("OnUpdate", function(self, elapsed)
+            self.timeSinceLastCleanup = (self.timeSinceLastCleanup or 0) + elapsed
+            if self.timeSinceLastCleanup > 300 then -- Every 5 minutes
+                IM:CleanupPendingItems()
+                IM:ValidateAutoDeleteList() -- Regular validation
+                self.timeSinceLastCleanup = 0
+            end
+        end)
+    end
+end
+
+function IM:IsValidItemData(itemData)
+    if not itemData then
+        return false
+    end
+    
+    -- Check for required fields
+    if not itemData.itemID or type(itemData.itemID) ~= "number" then
+        return false
+    end
+    
+    -- Basic sanity checks
+    if itemData.itemID <= 0 then
+        return false
+    end
+    
+    -- Ensure we have at least some display information
+    if not itemData.name and not itemData.displayName then
+        return false
+    end
+    
+    return true
+end
+
+function IM:ValidateAutoDeleteList()
+    if not self.autoDeleteList then 
+        self.autoDeleteList = {}
+        return 0
+    end
+    
+    local validCount = 0
+    local removedCount = 0
+    
+    for i = #self.autoDeleteList, 1, -1 do
+        local item = self.autoDeleteList[i]
+        
+        if self:IsValidItemData(item) then
+            validCount = validCount + 1
+        else
+            table.remove(self.autoDeleteList, i)
+            removedCount = removedCount + 1
+        end
+    end
+    
+    if removedCount > 0 then
+        print(string.format("Inventory Manager: Removed %d invalid entries from auto-delete list", removedCount))
+        self:SaveAutoDeleteList()
+    end
+    
+    return removedCount
+end
 
 -- Export/Import functions for Auto-Delete list
 function IM:ExportAutoDeleteList()
@@ -517,6 +581,20 @@ function IM:CleanupPendingItems()
     self.pendingItems = stillPending
 end
 
+function IM:CleanupAutoDeleteList()
+    if not self.autoDeleteList then return end
+    
+    local initialCount = #self.autoDeleteList
+    self:ValidateAutoDeleteList()
+    local finalCount = #self.autoDeleteList
+    
+    if initialCount ~= finalCount then
+        print(string.format("Inventory Manager: Cleaned auto-delete list (%d invalid entries removed)", 
+              initialCount - finalCount))
+        self:SaveAutoDeleteList()
+    end
+end
+
 function IM:GetQualityKey(quality)
     local qualityMap = {
         [0] = "POOR",
@@ -656,7 +734,15 @@ function IM:LogDeletion(itemLink, itemCount, deletionType)
     end
     
     local itemID = self:GetItemIDFromLink(itemLink)
-    if not itemID then return end
+    if not itemID then 
+        print("Inventory Manager: Cannot log deletion - invalid item link: " .. (itemLink or "nil"))
+        return 
+    end
+    
+    -- Ensure we have valid data
+    if not itemCount or itemCount < 1 then
+        itemCount = 1
+    end
     
     local deletionEntry = {
         timestamp = time(),
@@ -665,7 +751,6 @@ function IM:LogDeletion(itemLink, itemCount, deletionType)
         itemCount = itemCount,
         deletionType = deletionType or "manual"
     }
-    
     -- Add to current session
     local currentSession = self.deletionLog.sessions[self.deletionLog.currentSession]
     if currentSession then
@@ -715,22 +800,24 @@ function IM:LogDeletion(itemLink, itemCount, deletionType)
 end
 
 function IM:GetDeletionsForTimeRange(hours)
-    local cutoffTime = hours > 0 and (time() - (hours * 60 * 60)) or 0
+    -- Define proper time ranges for each tab
+    local cutoffTime
+    if hours == 0 then
+        -- Session tab = last 12 hours
+        cutoffTime = time() - (12 * 60 * 60)
+    else
+        -- Other tabs use their specified hours
+        cutoffTime = time() - (hours * 60 * 60)
+    end
+    
     local results = {}
     
-    if hours == 0 then
-        -- Current session - return raw deletions (they'll be grouped in UpdateDeletionLogFrame)
-        local currentSession = self.deletionLog.sessions[self.deletionLog.currentSession]
-        if currentSession then
-            return currentSession.deletions
-        end
-    else
-        -- Time-based range - combine from all sessions
-        for _, sessionData in pairs(self.deletionLog.sessions) do
-            for _, deletion in ipairs(sessionData.deletions) do
-                if deletion.timestamp >= cutoffTime then
-                    table.insert(results, deletion)
-                end
+    -- Filter deletions from all sessions by time
+    for _, sessionData in pairs(self.deletionLog.sessions) do
+        for _, deletion in ipairs(sessionData.deletions) do
+            -- Additional safety check for valid deletion entries
+            if deletion and deletion.timestamp and deletion.timestamp >= cutoffTime then
+                table.insert(results, deletion)
             end
         end
     end
@@ -1207,109 +1294,100 @@ function IM:SaveAutoDeleteList()
 end
 
 function IM:AddToAutoDeleteList(suggestion)
-    self.autoDeleteList = self.autoDeleteList or {}
+    if not suggestion or not suggestion.itemID then
+        print("Inventory Manager: Cannot add invalid item to auto-delete list")
+        return false
+    end
     
+    -- Ensure autoDeleteList exists
+    if not self.autoDeleteList then
+        self.autoDeleteList = {}
+    end
+    
+    -- Check if item already exists
     local found = false
     for i, autoDeleteItem in ipairs(self.autoDeleteList) do
-        if autoDeleteItem.itemID == suggestion.itemID then
+        if autoDeleteItem and autoDeleteItem.itemID == suggestion.itemID then
             found = true
             break
         end
     end
     
     if not found then
-        -- Only store essential info for auto-delete
+        -- SAFER: Provide comprehensive fallbacks for all fields
         local autoDeleteEntry = {
             itemID = suggestion.itemID,
-            name = suggestion.name,
-            link = suggestion.link,
-            quality = suggestion.quality,
-            displayName = suggestion.displayName
-            -- Don't store locations, counts, or values - we don't need them
+            name = suggestion.name or "Unknown Item",
+            link = suggestion.link or ("item:" .. suggestion.itemID),
+            quality = suggestion.quality or 1,
+            displayName = suggestion.displayName or suggestion.name or "Unknown Item",
+            -- Add timestamp for tracking
+            addedTime = time()
         }
-        self.autoDeleteList[#self.autoDeleteList + 1] = autoDeleteEntry
-        self:RemoveFromVendorList(suggestion.itemID)
-        self:RemoveFromIgnoredList(suggestion.itemID)
+        
+        -- Validate the entry before adding
+        if self:IsValidItemData(autoDeleteEntry) then
+            table.insert(self.autoDeleteList, autoDeleteEntry)
+            self:RemoveFromVendorList(suggestion.itemID)
+            self:RemoveFromIgnoredList(suggestion.itemID)
+            self:SaveAutoDeleteList()
+            IM:RefreshUI()
+            return true
+        else
+            print("Inventory Manager: Failed to create valid auto-delete entry")
+            return false
+        end
     end
     
-    self:SaveAutoDeleteList()
-    IM:RefreshUI()
+    return false
 end
 
 function IM:RemoveFromAutoDeleteList(itemID)
-    for i, autoDeleteItem in ipairs(self.autoDeleteList) do
-        if autoDeleteItem.itemID == itemID then
+    if not itemID then
+        print("Inventory Manager: Cannot remove item with nil itemID from auto-delete list")
+        return false
+    end
+    
+    if not self.autoDeleteList then
+        self.autoDeleteList = {}
+        return false
+    end
+    
+    for i = #self.autoDeleteList, 1, -1 do
+        local autoDeleteItem = self.autoDeleteList[i]
+        if autoDeleteItem and autoDeleteItem.itemID == itemID then
             table.remove(self.autoDeleteList, i)
             self:SaveAutoDeleteList()
             IM:RefreshUI()
+            
             if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
                 self:UpdateAutoDeleteListFrame()
             end
-            break
+            return true
         end
     end
+    
+    return false
 end
 
 function IM:ClearAutoDeleteList()
-    self.autoDeleteList = {}
+    if not self.autoDeleteList then
+        self.autoDeleteList = {}
+    else
+        -- Clear the table properly
+        for i = #self.autoDeleteList, 1, -1 do
+            table.remove(self.autoDeleteList, i)
+        end
+    end
+    
     self:SaveAutoDeleteList()
     IM:RefreshUI()
+    
     if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
         self:UpdateAutoDeleteListFrame()
     end
-end
-
-function IM:ProcessAutoDeleteItems()
-    if not self.db.autoDeleteEnabled or #self.autoDeleteList == 0 then
-        return
-    end
     
-    local autoDeleteItemsByID = {}
-    for _, item in ipairs(self.autoDeleteList) do
-        autoDeleteItemsByID[item.itemID] = item
-    end
-    
-    local deletedSlots = 0
-    local deletedItems = {}
-    
-    for bag = 0, 4 do
-        local slots = GetContainerNumSlots(bag)
-        for slot = 1, slots do
-            local texture, count, locked, quality, readable, lootable, link = GetContainerItemInfo(bag, slot)
-            if texture and link and not locked then
-                local itemID = self:GetItemIDFromLink(link)
-                if itemID and autoDeleteItemsByID[itemID] then
-                    -- Delete the item
-                    PickupContainerItem(bag, slot)
-                    DeleteCursorItem()
-                    deletedSlots = deletedSlots + 1
-                    
-                    -- Track deleted items with their links and counts
-                    if not deletedItems[link] then
-                        deletedItems[link] = 0
-                    end
-                    deletedItems[link] = deletedItems[link] + count
-                end
-            end
-        end
-    end
-    
-    if deletedSlots > 0 then
-        -- Build the message with item links
-        local message = "Inventory Manager: Auto-deleted "
-        local firstItem = true
-        
-        for itemLink, itemCount in pairs(deletedItems) do
-            if not firstItem then
-                message = message .. ", "
-            end
-            message = message .. itemLink .. " x" .. itemCount
-            firstItem = false
-        end
-        
-        message = message .. string.format(" (%d slots)", deletedSlots)
-        print(message)
-    end
+    print("Inventory Manager: Auto-delete list cleared")
 end
 
 function IM:SaveIgnoredList()
@@ -1317,6 +1395,10 @@ function IM:SaveIgnoredList()
 end
 
 function IM:AddToIgnoredList(suggestion)
+	if not suggestion or not suggestion.itemID then
+        print("Inventory Manager: Cannot add invalid item to ignored list")
+        return
+    end
     self.ignoredItems = self.ignoredItems or {}
     
     local found = false
@@ -1370,6 +1452,10 @@ function IM:SaveVendorList()
 end
 
 function IM:AddToVendorList(suggestion)
+	if not suggestion or not suggestion.itemID then
+        print("Inventory Manager: Cannot add invalid item to vendor list")
+        return
+    end
     local found = false
     for i, vendorItem in ipairs(self.vendorList) do
         if vendorItem.itemID == suggestion.itemID then
@@ -1920,6 +2006,9 @@ function IM:OnInitialize()
         self.autoDeleteList = self.autoDeleteList or {}
         IM_AutoDeleteListDB = self.autoDeleteList
     end
+	
+	self:ValidateAutoDeleteList()
+    self:CleanupAutoDeleteList()
     
     if IM_FramePositions then
         for frameName, position in pairs(IM_FramePositions) do
@@ -1929,20 +2018,12 @@ function IM:OnInitialize()
     IM_FramePositions = self.framePositions
     
     self:CreateConfigPanel()
-    
+    self:ScheduleCleanup()
+	
     local playerName = UnitName("player")
     local realmName = GetRealmName()
     print(string.format("Inventory Manager loaded for %s-%s. Use /im or /inventorymanager to open.", playerName, realmName))
-    
-    -- Setup cleanup timer
-    self.cleanupTimer = CreateFrame("Frame")
-    self.cleanupTimer:SetScript("OnUpdate", function(self, elapsed)
-        self.timeSinceLastCleanup = (self.timeSinceLastCleanup or 0) + elapsed
-        if self.timeSinceLastCleanup > 60 then -- Cleanup every minute
-            IM:CleanupPendingItems()
-            self.timeSinceLastCleanup = 0
-        end
-    end)
+
 end
 
 function IM:InitializeDeletionLog()
