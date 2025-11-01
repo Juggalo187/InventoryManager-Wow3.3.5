@@ -262,15 +262,18 @@ function IM:CreateSimpleSettingsFrame()
         IM:SaveConfig()
     end)
 	
-    -- Open Full Settings button
-    frame.fullSettingsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    frame.fullSettingsBtn:SetSize(100, 25)
-    frame.fullSettingsBtn:SetPoint("BOTTOMLEFT", 50, 10)
-    frame.fullSettingsBtn:SetText("Full Settings")
-    frame.fullSettingsBtn:SetScript("OnClick", function()
-        InterfaceOptionsFrame_Show()
-        InterfaceOptionsFrame_OpenToCategory("Inventory Manager")
-    end)
+    
+	frame.fullSettingsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+	frame.fullSettingsBtn:SetSize(100, 25)
+	frame.fullSettingsBtn:SetPoint("BOTTOMLEFT", 50, 10)
+	frame.fullSettingsBtn:SetText("Full Settings")
+	frame.fullSettingsBtn:SetScript("OnClick", function()
+		if IM_ConfigFrame and IM_ConfigFrame:IsShown() then
+			IM_ConfigFrame:Hide()
+		else
+			IM:ShowConfigFrame()
+		end
+	end)
 	
 	frame.deletionLogBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 	frame.deletionLogBtn:SetSize(100, 25)

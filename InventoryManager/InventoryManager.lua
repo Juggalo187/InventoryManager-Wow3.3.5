@@ -20,25 +20,36 @@ IM.defaultConfig = {
         ["ARTIFACT"] = true,
     },
     ignoreItemTypes = {
+		["Weapon"] = false,
+        ["Armor"] = false,
+		["Consumable"] = true,
         ["Quest"] = true,
         ["Recipe"] = true,
-        ["Consumable"] = false,
     },
 	ignoreTradeGoodsTypes = {
-		["Cloth"] = false,
-		["Leather"] = false,
-		["Metal"] = false,
-		["Stone"] = false,
-		["Gem"] = false,
-		["Meat"] = false,
-		["Fish"] = false,
-		["Herb"] = false,
-		["Elemental"] = false,
-		["Enchanting"] = false,
-		["Jewelcrafting"] = false,
-		["Parts"] = false,
-		["Other"] = false,
+		["Cloth"] = true,
+		["Leather"] = true,
+		["Metal"] = true,
+		["Stone"] = true,
+		["Gem"] = true,
+		["Meat"] = true,
+		["Fish"] = true,
+		["Herb"] = true,
+		["Elemental"] = true,
+		["Enchanting"] = true,
+		["Jewelcrafting"] = true,
+		["Parts"] = true,
+		["Other"] = true,
 	},
+	alawaysignore = {
+		["Containers"] = true,
+        ["Currency"] = true,
+        ["Keys"] = true,
+		["Glyphs"] = true,
+		["Quivers"] = true,
+		["Miscellaneous"] = true,
+		["Projectile"] = true,
+    },
     minItemValue = 1,
     autoSellAtVendor = false,
     showSellListAtVendor = false,
@@ -1147,6 +1158,10 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         return nil
     end
 	
+	if self.db.alawaysignore[itemInfo.type] then
+		return nil
+	end
+	
     -- Check if this is gear (has an equip location)
 	local isGear = gearSlots[itemEquipLoc]
 
@@ -1767,6 +1782,8 @@ function IM:SaveFramePosition(frame)
         self.framePositions.autoDeleteList = {point = point, relativePoint = relativePoint, x = x, y = y}
     elseif frameName == "IM_SimpleSettingsFrame" then
         self.framePositions.simpleSettings = {point = point, relativePoint = relativePoint, x = x, y = y}
+    elseif frameName == "IM_ConfigFrame" then
+        self.framePositions.config = {point = point, relativePoint = relativePoint, x = x, y = y}
     end
     
     -- Save to per-character SavedVariables
@@ -1787,6 +1804,8 @@ function IM:RestoreFramePosition(frame, defaultPoint, defaultX, defaultY)
         position = self.framePositions.autoDeleteList
     elseif frameName == "IM_SimpleSettingsFrame" then
         position = self.framePositions.simpleSettings
+    elseif frameName == "IM_ConfigFrame" then
+        position = self.framePositions.config
     end
     
     if position then
@@ -1814,6 +1833,12 @@ SlashCmdList["IMSELL"] = function(msg)
     else
         print("Inventory Manager: You must be at a vendor to sell items.")
     end
+end
+
+SLASH_IMCONFIG1 = "/imconfig"
+
+SlashCmdList["IMCONFIG"] = function(msg)
+	IM:ShowConfigFrame()
 end
 
 function IM:ForceRefreshItemData()
@@ -1966,6 +1991,13 @@ function IM:OnInitialize()
                 self.db.ignoreItemTypes[typeName] = defaultValue
             end
         end
+		-- Ensure Always  Ignore exist
+        for typeName, defaultValue in pairs(self.defaultConfig.alawaysignore) do
+            if self.db.alawaysignore[typeName] == nil then
+                self.db.alawaysignore[typeName] = defaultValue
+            end
+        end
+		
         
         -- Ensure trade goods settings exist
         for typeName, defaultValue in pairs(self.defaultConfig.ignoreTradeGoodsTypes) do
@@ -1978,14 +2010,11 @@ function IM:OnInitialize()
         IM_ConfigDB = self.db
     end
     
-    -- Initialize deletion log BEFORE creating UI elements
     self:InitializeDeletionLog()
     
-    -- Now create UI elements
     self:CreateToggleIcon()
     self:CreateSimpleSettingsFrame()
     
-    -- Load other saved data
     if IM_VendorListDB then
         self.vendorList = IM_VendorListDB
     else
@@ -2016,13 +2045,11 @@ function IM:OnInitialize()
         end
     end
     IM_FramePositions = self.framePositions
-    
-    self:CreateConfigPanel()
     self:ScheduleCleanup()
 	
     local playerName = UnitName("player")
     local realmName = GetRealmName()
-    print(string.format("Inventory Manager loaded for %s-%s. Use /im or /inventorymanager to open.", playerName, realmName))
+    print(string.format("Inventory Manager loaded for %s-%s. Use /im or /imconfig.", playerName, realmName))
 
 end
 

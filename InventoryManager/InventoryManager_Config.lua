@@ -7,34 +7,70 @@ function IM:SaveConfig()
 end
 
 function IM:CreateConfigPanel()
-    local panel = CreateFrame("Frame", "IM_ConfigPanel")
-    panel.name = "Inventory Manager"
-    local scrollFrame = CreateFrame("ScrollFrame", "IM_ConfigScrollFrame", panel, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 10, -10)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
-    local scrollChild = CreateFrame("Frame", "IM_ConfigScrollChild")
-    scrollChild:SetWidth(400)
-    scrollChild:SetHeight(650)
-    scrollFrame:SetScrollChild(scrollChild)
+    local frame = CreateFrame("Frame", "IM_ConfigFrame", UIParent)
+    frame:SetSize(600, 700)
+    frame:SetPoint("CENTER", 0, 0)
     
-    local scrollBar = _G["IM_ConfigScrollFrameScrollBar"] or CreateFrame("Slider", "IM_ConfigScrollFrameScrollBar", scrollFrame, "UIPanelScrollBarTemplate")
-    scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 4, -16)
-    scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 4, 16)
-    scrollBar:SetMinMaxValues(0, 300)
-    scrollBar:SetValueStep(1)
-    scrollBar:SetValue(0)
-    scrollBar:SetWidth(16)
-    scrollBar:SetScript("OnValueChanged", function(self, value)
-        scrollFrame:SetVerticalScroll(value)
+    -- Make it movable
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        IM:SaveFramePosition(self)
     end)
     
-    local title = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 10, -15)
-    title:SetText("Inventory Manager Settings")
+    -- Background
+    frame.bg = frame:CreateTexture(nil, "BACKGROUND")
+    frame.bg:SetAllPoints(true)
+    frame.bg:SetTexture(0, 0, 0, 0.9)
+    
+    -- Border
+    frame.border = CreateFrame("Frame", nil, frame)
+    frame.border:SetPoint("TOPLEFT", -3, 3)
+    frame.border:SetPoint("BOTTOMRIGHT", 3, -3)
+    frame.border:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    frame.border:SetBackdropColor(0, 0, 0, 0.8)
+    frame.border:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    
+    -- Title
+    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    frame.title:SetPoint("TOP", 0, -15)
+    frame.title:SetText("Inventory Manager Settings")
+    
+    -- Close button
+    frame.closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    frame.closeBtn:SetSize(32, 32)
+    frame.closeBtn:SetPoint("TOPRIGHT", -5, -5)
+    frame.closeBtn:SetScript("OnClick", function() frame:Hide() end)
+    
+    -- Scroll frame
+    frame.scroll = CreateFrame("ScrollFrame", "IM_ConfigScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    frame.scroll:SetPoint("TOPLEFT", 10, -40)
+    frame.scroll:SetPoint("BOTTOMRIGHT", -30, 40)
+    
+    frame.scrollChild = CreateFrame("Frame", "IM_ConfigScrollChild")
+    frame.scrollChild:SetWidth(580)
+    frame.scrollChild:SetHeight(650)
+    frame.scroll:SetScrollChild(frame.scrollChild)
+    
+    -- Position the scroll bar properly
+    local scrollBar = _G["IM_ConfigScrollFrameScrollBar"]
+    if scrollBar then
+        scrollBar:ClearAllPoints()
+        scrollBar:SetPoint("TOPLEFT", frame.scroll, "TOPRIGHT", 0, -16)
+        scrollBar:SetPoint("BOTTOMLEFT", frame.scroll, "BOTTOMRIGHT", 0, 16)
+    end
     
     -- Enable checkbox
-    local enableCheckbox = CreateFrame("CheckButton", "IM_EnableCheckbox", scrollChild, "OptionsCheckButtonTemplate")
-    enableCheckbox:SetPoint("TOPLEFT", 20, -50)
+    local enableCheckbox = CreateFrame("CheckButton", "IM_EnableCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
+    enableCheckbox:SetPoint("TOPLEFT", 20, -20)
     _G[enableCheckbox:GetName().."Text"]:SetText("Enable Inventory Manager")
     enableCheckbox:SetChecked(self.db.enabled)
     enableCheckbox:SetScript("OnClick", function(self)
@@ -44,8 +80,8 @@ function IM:CreateConfigPanel()
     end)
     
     -- Quality settings
-    local qualityTitle = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    qualityTitle:SetPoint("TOPLEFT", 20, -90)
+    local qualityTitle = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    qualityTitle:SetPoint("TOPLEFT", 20, -60)
     qualityTitle:SetText("Ignore Gear Quality:")
     
     local qualityCheckboxes = {}
@@ -60,105 +96,105 @@ function IM:CreateConfigPanel()
     }
     
     local qualityOrder = {"POOR", "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "ARTIFACT"}
-	local qualityDisplayNames = {
-		POOR = "Poor (Grey)",
-		COMMON = "Common (White)", 
-		UNCOMMON = "Uncommon (Green)",
-		RARE = "Rare (Blue)",
-		EPIC = "Epic (Purple)",
-		LEGENDARY = "Legendary (Orange)",
-		ARTIFACT = "Artifact (Gold)"
-	}
-	
-	for i, qualityKey in ipairs(qualityOrder) do
-		local qualityNum = i - 1  -- Convert to 0-based quality number
-		qualityCheckboxes[qualityKey] = CreateFrame("CheckButton", "IM_Quality_"..qualityKey, scrollChild, "OptionsCheckButtonTemplate")
-		qualityCheckboxes[qualityKey]:SetPoint("TOPLEFT", 30, -120 - ((i-1) * 30))
-		_G[qualityCheckboxes[qualityKey]:GetName().."Text"]:SetText(qualityColors[qualityNum] .. qualityDisplayNames[qualityKey])
-		qualityCheckboxes[qualityKey]:SetChecked(self.db.ignoreQuality[qualityKey])
-		qualityCheckboxes[qualityKey]:SetScript("OnClick", function(self)
-			IM.db.ignoreQuality[qualityKey] = self:GetChecked() and true or false
-			IM:SaveConfig()
-			IM:RefreshUI()
-		end)
-	end
+    local qualityDisplayNames = {
+        POOR = "Poor (Grey)",
+        COMMON = "Common (White)", 
+        UNCOMMON = "Uncommon (Green)",
+        RARE = "Rare (Blue)",
+        EPIC = "Epic (Purple)",
+        LEGENDARY = "Legendary (Orange)",
+        ARTIFACT = "Artifact (Gold)"
+    }
+    
+    for i, qualityKey in ipairs(qualityOrder) do
+        local qualityNum = i - 1  -- Convert to 0-based quality number
+        qualityCheckboxes[qualityKey] = CreateFrame("CheckButton", "IM_Quality_"..qualityKey, frame.scrollChild, "OptionsCheckButtonTemplate")
+        qualityCheckboxes[qualityKey]:SetPoint("TOPLEFT", 30, -90 - ((i-1) * 30))
+        _G[qualityCheckboxes[qualityKey]:GetName().."Text"]:SetText(qualityColors[qualityNum] .. qualityDisplayNames[qualityKey])
+        qualityCheckboxes[qualityKey]:SetChecked(self.db.ignoreQuality[qualityKey])
+        qualityCheckboxes[qualityKey]:SetScript("OnClick", function(self)
+            IM.db.ignoreQuality[qualityKey] = self:GetChecked() and true or false
+            IM:SaveConfig()
+            IM:RefreshUI()
+        end)
+    end
     
     -- Item type settings
-	local typeTitle = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	typeTitle:SetPoint("TOPLEFT", 200, -90)
-	typeTitle:SetText("Ignore Items by Type:")
-	
-	local itemTypes = {"Quest", "Recipe", "Consumable"}
-	local typeCheckboxes = {}
-	
-	for i, typeName in ipairs(itemTypes) do
-		typeCheckboxes[typeName] = CreateFrame("CheckButton", "IM_Type_"..typeName, scrollChild, "OptionsCheckButtonTemplate")
-		typeCheckboxes[typeName]:SetPoint("TOPLEFT", 210, -120 - ((i-1) * 30))
-		_G[typeCheckboxes[typeName]:GetName().."Text"]:SetText(typeName)
-		local isChecked = self.db.ignoreItemTypes[typeName] and true or false
-		typeCheckboxes[typeName]:SetChecked(isChecked)
-		
-		typeCheckboxes[typeName]:SetScript("OnClick", function(self)
-			IM.db.ignoreItemTypes[typeName] = self:GetChecked() and true or false
-			IM:SaveConfig()
-			IM:RefreshUI()
-		end)
-	end
-	
-	-- Trade Goods Categories
-	local tradeGoodsTitle = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	tradeGoodsTitle:SetPoint("TOPLEFT", 350, -90)
-	tradeGoodsTitle:SetText("Ignore Trade Goods:")
-	
-	local tradeGoodsCategories = {"Cloth", "Leather", "Metal", "Stone", "Meat", "Fish", "Herb", "Elemental", "Enchanting", "Jewelcrafting", "Gem", "Parts", "Other"}
-	local tradeGoodsCheckboxes = {}
-	
-	for i, category in ipairs(tradeGoodsCategories) do
-		-- Create a container frame for each checkbox
-		local container = CreateFrame("Frame", nil, scrollChild)
-		container:SetSize(120, 25)
-		
-		-- Position the container
-		if i <= 6 then
-			container:SetPoint("TOPLEFT", 360, -120 - ((i-1) * 30))
-		else
-			container:SetPoint("TOPLEFT", 460, -120 - ((i-7) * 30))
-		end
-		
-		-- Create checkbox manually
-		local checkbox = CreateFrame("CheckButton", nil, container, "UICheckButtonTemplate")
-		checkbox:SetSize(25, 25)
-		checkbox:SetPoint("LEFT", 0, 0)
-		
-		-- Create text label
-		local text = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-		text:SetPoint("LEFT", checkbox, "RIGHT", 5, 0)
-		text:SetText(category)
-		
-		-- Store reference
-		tradeGoodsCheckboxes[category] = checkbox
-		
-		-- Set initial state
-		local isChecked = self.db.ignoreTradeGoodsTypes[category] and true or false
-		checkbox:SetChecked(isChecked)
-		
-		-- Set click handler
-		checkbox:SetScript("OnClick", function(self)
-			local checked = self:GetChecked()
-			IM.db.ignoreTradeGoodsTypes[category] = checked
-			IM:SaveConfig()
-			IM:RefreshUI()
-		end)
-	end
+    local typeTitle = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    typeTitle:SetPoint("TOPLEFT", 200, -60)
+    typeTitle:SetText("Ignore Items by Type:")
+    
+    local itemTypes = {"Weapon", "Armor", "Consumable", "Quest", "Recipe", }
+    local typeCheckboxes = {}
+    
+    for i, typeName in ipairs(itemTypes) do
+        typeCheckboxes[typeName] = CreateFrame("CheckButton", "IM_Type_"..typeName, frame.scrollChild, "OptionsCheckButtonTemplate")
+        typeCheckboxes[typeName]:SetPoint("TOPLEFT", 210, -90 - ((i-1) * 30))
+        _G[typeCheckboxes[typeName]:GetName().."Text"]:SetText(typeName)
+        local isChecked = self.db.ignoreItemTypes[typeName] and true or false
+        typeCheckboxes[typeName]:SetChecked(isChecked)
+        
+        typeCheckboxes[typeName]:SetScript("OnClick", function(self)
+            IM.db.ignoreItemTypes[typeName] = self:GetChecked() and true or false
+            IM:SaveConfig()
+            IM:RefreshUI()
+        end)
+    end
+    
+    -- Trade Goods Categories
+    local tradeGoodsTitle = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tradeGoodsTitle:SetPoint("TOPLEFT", 350, -60)
+    tradeGoodsTitle:SetText("Ignore Trade Goods:")
+    
+    local tradeGoodsCategories = {"Cloth", "Leather", "Metal", "Stone", "Meat", "Fish", "Herb", "Elemental", "Enchanting", "Jewelcrafting", "Gem", "Parts", "Other"}
+    local tradeGoodsCheckboxes = {}
+    
+    for i, category in ipairs(tradeGoodsCategories) do
+        -- Create a container frame for each checkbox
+        local container = CreateFrame("Frame", nil, frame.scrollChild)
+        container:SetSize(120, 25)
+        
+        -- Position the container
+        if i <= 6 then
+            container:SetPoint("TOPLEFT", 360, -90 - ((i-1) * 30))
+        else
+            container:SetPoint("TOPLEFT", 460, -90 - ((i-7) * 30))
+        end
+        
+        -- Create checkbox manually
+        local checkbox = CreateFrame("CheckButton", nil, container, "UICheckButtonTemplate")
+        checkbox:SetSize(25, 25)
+        checkbox:SetPoint("LEFT", 0, 0)
+        
+        -- Create text label
+        local text = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        text:SetPoint("LEFT", checkbox, "RIGHT", 5, 0)
+        text:SetText(category)
+        
+        -- Store reference
+        tradeGoodsCheckboxes[category] = checkbox
+        
+        -- Set initial state
+        local isChecked = self.db.ignoreTradeGoodsTypes[category] and true or false
+        checkbox:SetChecked(isChecked)
+        
+        -- Set click handler
+        checkbox:SetScript("OnClick", function(self)
+            local checked = self:GetChecked()
+            IM.db.ignoreTradeGoodsTypes[category] = checked
+            IM:SaveConfig()
+            IM:RefreshUI()
+        end)
+    end
     
     -- Stack value setting - converted to sliders
-    local stackLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local stackLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     stackLabel:SetPoint("TOPLEFT", 20, -330)
     stackLabel:SetText("Ignore items worth more than (per item):")
     stackLabel:SetTextColor(1, 1, 1)
     
     -- Gold slider for min item value
-    local stackGoldSlider = CreateFrame("Slider", "IM_StackValueGold", scrollChild, "OptionsSliderTemplate")
+    local stackGoldSlider = CreateFrame("Slider", "IM_StackValueGold", frame.scrollChild, "OptionsSliderTemplate")
     stackGoldSlider:SetPoint("TOPLEFT", 20, -355)
     stackGoldSlider:SetWidth(150)
     stackGoldSlider:SetHeight(17)
@@ -169,13 +205,13 @@ function IM:CreateConfigPanel()
     _G[stackGoldSlider:GetName().."Low"]:SetText("0g")
     _G[stackGoldSlider:GetName().."High"]:SetText("50g")
     
-    local stackGoldLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local stackGoldLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     stackGoldLabel:SetPoint("TOPLEFT", 180, -355)
     stackGoldLabel:SetText("Gold")
     stackGoldLabel:SetTextColor(1, 1, 0)
     
     -- Silver slider for min item value
-    local stackSilverSlider = CreateFrame("Slider", "IM_StackValueSilver", scrollChild, "OptionsSliderTemplate")
+    local stackSilverSlider = CreateFrame("Slider", "IM_StackValueSilver", frame.scrollChild, "OptionsSliderTemplate")
     stackSilverSlider:SetPoint("TOPLEFT", 20, -385)
     stackSilverSlider:SetWidth(150)
     stackSilverSlider:SetHeight(17)
@@ -186,13 +222,13 @@ function IM:CreateConfigPanel()
     _G[stackSilverSlider:GetName().."Low"]:SetText("0s")
     _G[stackSilverSlider:GetName().."High"]:SetText("99s")
     
-    local stackSilverLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local stackSilverLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     stackSilverLabel:SetPoint("TOPLEFT", 180, -385)
     stackSilverLabel:SetText("Silver")
     stackSilverLabel:SetTextColor(0.75, 0.75, 0.75)
     
     -- Copper slider for min item value
-    local stackCopperSlider = CreateFrame("Slider", "IM_StackValueCopper", scrollChild, "OptionsSliderTemplate")
+    local stackCopperSlider = CreateFrame("Slider", "IM_StackValueCopper", frame.scrollChild, "OptionsSliderTemplate")
     stackCopperSlider:SetPoint("TOPLEFT", 20, -415)
     stackCopperSlider:SetWidth(150)
     stackCopperSlider:SetHeight(17)
@@ -203,7 +239,7 @@ function IM:CreateConfigPanel()
     _G[stackCopperSlider:GetName().."Low"]:SetText("0c")
     _G[stackCopperSlider:GetName().."High"]:SetText("99c")
     
-    local stackCopperLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local stackCopperLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     stackCopperLabel:SetPoint("TOPLEFT", 180, -415)
     stackCopperLabel:SetText("Copper")
     stackCopperLabel:SetTextColor(0.8, 0.5, 0.2)
@@ -238,9 +274,9 @@ function IM:CreateConfigPanel()
         _G[self:GetName().."Text"]:SetText(string.format("%dc", value))
         UpdateMinItemValue()
     end)
-	
-	-- Gear consideration
-    local gearValueCheckbox = CreateFrame("CheckButton", "IM_GearValueCheckbox", scrollChild, "OptionsCheckButtonTemplate")
+    
+    -- Gear consideration
+    local gearValueCheckbox = CreateFrame("CheckButton", "IM_GearValueCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
     gearValueCheckbox:SetPoint("TOPLEFT", 280, -325)
     _G[gearValueCheckbox:GetName().."Text"]:SetText("Ignore Gear Value")
     gearValueCheckbox:SetChecked(self.db.ignoreGearValue)
@@ -249,18 +285,18 @@ function IM:CreateConfigPanel()
         IM:SaveConfig()
         IM:RefreshUI()
     end)
-	
-	local autoDeleteCheckbox = CreateFrame("CheckButton", "IM_AutoDeleteCheckbox", scrollChild, "OptionsCheckButtonTemplate")
-	autoDeleteCheckbox:SetPoint("TOPLEFT", 280, -350)
-	_G[autoDeleteCheckbox:GetName().."Text"]:SetText("Enable Auto-Delete")
-	autoDeleteCheckbox:SetChecked(self.db.autoDeleteEnabled)
-	autoDeleteCheckbox:SetScript("OnClick", function(self)
-		IM.db.autoDeleteEnabled = self:GetChecked()
-		IM:SaveConfig()
-	end)
-	
+    
+    local autoDeleteCheckbox = CreateFrame("CheckButton", "IM_AutoDeleteCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
+    autoDeleteCheckbox:SetPoint("TOPLEFT", 280, -350)
+    _G[autoDeleteCheckbox:GetName().."Text"]:SetText("Enable Auto-Delete")
+    autoDeleteCheckbox:SetChecked(self.db.autoDeleteEnabled)
+    autoDeleteCheckbox:SetScript("OnClick", function(self)
+        IM.db.autoDeleteEnabled = self:GetChecked()
+        IM:SaveConfig()
+    end)
+    
     -- Auto-sell at vendor
-    local autoSellCheckbox = CreateFrame("CheckButton", "IM_AutoSellCheckbox", scrollChild, "OptionsCheckButtonTemplate")
+    local autoSellCheckbox = CreateFrame("CheckButton", "IM_AutoSellCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
     autoSellCheckbox:SetPoint("TOPLEFT", 20, -450)
     _G[autoSellCheckbox:GetName().."Text"]:SetText("Automatically sell vendor list items at vendors")
     autoSellCheckbox:SetChecked(self.db.autoSellAtVendor)
@@ -270,7 +306,7 @@ function IM:CreateConfigPanel()
     end)
     
     -- Show sell list at vendor
-    local showSellListCheckbox = CreateFrame("CheckButton", "IM_ShowSellListCheckbox", scrollChild, "OptionsCheckButtonTemplate")
+    local showSellListCheckbox = CreateFrame("CheckButton", "IM_ShowSellListCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
     showSellListCheckbox:SetPoint("TOPLEFT", 20, -480)
     _G[showSellListCheckbox:GetName().."Text"]:SetText("Show sell list when vendor window opens")
     showSellListCheckbox:SetChecked(self.db.showSellListAtVendor)
@@ -278,9 +314,9 @@ function IM:CreateConfigPanel()
         IM.db.showSellListAtVendor = self:GetChecked()
         IM:SaveConfig()
     end)
-	
+    
     -- Auto-open on low bag space
-    local autoOpenCheckbox = CreateFrame("CheckButton", "IM_AutoOpenCheckbox", scrollChild, "OptionsCheckButtonTemplate")
+    local autoOpenCheckbox = CreateFrame("CheckButton", "IM_AutoOpenCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
     autoOpenCheckbox:SetPoint("TOPLEFT", 20, -510)
     _G[autoOpenCheckbox:GetName().."Text"]:SetText("Auto-open when bag space is low")
     autoOpenCheckbox:SetChecked(self.db.autoOpenOnLowSpace)
@@ -290,12 +326,12 @@ function IM:CreateConfigPanel()
     end)
     
     -- Low space threshold slider 
-    local thresholdLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local thresholdLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     thresholdLabel:SetPoint("TOPLEFT", 40, -540)
     thresholdLabel:SetText("Low space threshold:")
     thresholdLabel:SetTextColor(1, 1, 1)
     
-    local thresholdSlider = CreateFrame("Slider", "IM_ThresholdSlider", scrollChild, "OptionsSliderTemplate")
+    local thresholdSlider = CreateFrame("Slider", "IM_ThresholdSlider", frame.scrollChild, "OptionsSliderTemplate")
     thresholdSlider:SetPoint("TOPLEFT", 200, -540)
     thresholdSlider:SetWidth(150)
     thresholdSlider:SetHeight(17)
@@ -311,42 +347,58 @@ function IM:CreateConfigPanel()
         _G[self:GetName().."Text"]:SetText(string.format("%d%%", value))
         IM:SaveConfig()
     end)
-	
-	local deletionLogCheckbox = CreateFrame("CheckButton", "IM_DeletionLogCheckbox", scrollChild, "OptionsCheckButtonTemplate")
-	deletionLogCheckbox:SetPoint("TOPLEFT", 20, -570) -- Adjust position as needed
-	_G[deletionLogCheckbox:GetName().."Text"]:SetText("Enable Deletion Logging")
-	deletionLogCheckbox:SetChecked(self.db.deletionLogEnabled)
-	deletionLogCheckbox:SetScript("OnClick", function(self)
-		IM.db.deletionLogEnabled = self:GetChecked()
-		IM:SaveConfig()
-	end)
+    
+    local deletionLogCheckbox = CreateFrame("CheckButton", "IM_DeletionLogCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
+    deletionLogCheckbox:SetPoint("TOPLEFT", 20, -570)
+    _G[deletionLogCheckbox:GetName().."Text"]:SetText("Enable Deletion Logging")
+    deletionLogCheckbox:SetChecked(self.db.deletionLogEnabled)
+    deletionLogCheckbox:SetScript("OnClick", function(self)
+        IM.db.deletionLogEnabled = self:GetChecked()
+        IM:SaveConfig()
+    end)
     
     -- Reset button
-    local resetBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    local resetBtn = CreateFrame("Button", nil, frame.scrollChild, "UIPanelButtonTemplate")
     resetBtn:SetSize(120, 25)
-    resetBtn:SetPoint("TOPLEFT", 20, -600)
+    resetBtn:SetPoint("TOPLEFT", 20, -610)
     resetBtn:SetText("Reset to Defaults")
     resetBtn:SetScript("OnClick", function()
         StaticPopup_Show("IM_CONFIRM_RESET")
     end)
     
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    closeBtn:SetSize(100, 25)
+    closeBtn:SetPoint("BOTTOMRIGHT", -10, 10)
+    closeBtn:SetText("Close")
+    closeBtn:SetScript("OnClick", function() frame:Hide() end)
+    
     -- Reset confirmation dialog
     StaticPopupDialogs["IM_CONFIRM_RESET"] = {
-		text = "Are you sure you want to reset all settings to defaults for this character? This will reload the UI.",
-		button1 = "Yes",
-		button2 = "No",
-		OnAccept = function()
-			IM.db = IM:CopyTable(IM.defaultConfig)
-			IM:SaveConfig()
-			ReloadUI()
-		end,
-		timeout = 0,
-		whileDead = true,
-		hideOnEscape = true,
-		preferredIndex = 3,
-	}
+        text = "Are you sure you want to reset all settings to defaults for this character? This will reload the UI.",
+        button1 = "Yes",
+        button2 = "No",
+        OnAccept = function()
+            IM.db = IM:CopyTable(IM.defaultConfig)
+            IM:SaveConfig()
+            ReloadUI()
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
     
-    panel:SetScript("OnShow", function()
+    -- Store references for refresh
+    frame.qualityCheckboxes = qualityCheckboxes
+    frame.typeCheckboxes = typeCheckboxes
+    frame.tradeGoodsCheckboxes = tradeGoodsCheckboxes
+    frame.stackGoldSlider = stackGoldSlider
+    frame.stackSilverSlider = stackSilverSlider
+    frame.stackCopperSlider = stackCopperSlider
+    frame.thresholdSlider = thresholdSlider
+    
+    frame:SetScript("OnShow", function()
         -- Refresh all UI elements with current values
         enableCheckbox:SetChecked(IM.db.enabled)
         
@@ -381,16 +433,29 @@ function IM:CreateConfigPanel()
         _G[stackCopperSlider:GetName().."Text"]:SetText(string.format("%dc", math.floor((minItemValue * 10000) % 100)))
         
         gearValueCheckbox:SetChecked(IM.db.ignoreGearValue)
-		autoDeleteCheckbox:SetChecked(IM.db.autoDeleteEnabled)
+        autoDeleteCheckbox:SetChecked(IM.db.autoDeleteEnabled)
         autoSellCheckbox:SetChecked(IM.db.autoSellAtVendor)
         showSellListCheckbox:SetChecked(IM.db.showSellListAtVendor)
         autoOpenCheckbox:SetChecked(IM.db.autoOpenOnLowSpace)
-		deletionLogCheckbox:SetChecked(IM.db.deletionLogEnabled)
+        deletionLogCheckbox:SetChecked(IM.db.deletionLogEnabled)
         thresholdSlider:SetValue(IM.db.lowSpaceThreshold * 100)
         _G[thresholdSlider:GetName().."Text"]:SetText(string.format("%d%%", IM.db.lowSpaceThreshold * 100))
-        
-        scrollBar:SetMinMaxValues(0, math.max(0, scrollChild:GetHeight() - scrollFrame:GetHeight()))
     end)
     
-    InterfaceOptions_AddCategory(panel)
+    -- Hide by default
+    frame:Hide()
+    
+    IM_ConfigFrame = frame
+    return frame
+end
+
+function IM:ShowConfigFrame()
+    if not IM_ConfigFrame then
+        self:CreateConfigPanel()
+    end
+    
+    -- Restore position
+    self:RestoreFramePosition(IM_ConfigFrame, "CENTER", 0, 0)
+    
+    IM_ConfigFrame:Show()
 end
