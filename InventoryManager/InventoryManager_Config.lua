@@ -124,7 +124,7 @@ function IM:CreateConfigPanel()
     typeTitle:SetPoint("TOPLEFT", 200, -60)
     typeTitle:SetText("Ignore Items by Type:")
     
-    local itemTypes = {"Weapon", "Armor", "Consumable", "Quest", "Recipe", }
+    local itemTypes = {"Weapon", "Armor", "Consumable", "Miscellaneous", "Quest", "Recipe", }
     local typeCheckboxes = {}
     
     for i, typeName in ipairs(itemTypes) do

@@ -23,6 +23,7 @@ IM.defaultConfig = {
 		["Weapon"] = false,
         ["Armor"] = false,
 		["Consumable"] = true,
+		["Miscellaneous"] = false,
         ["Quest"] = true,
         ["Recipe"] = true,
     },
@@ -47,7 +48,6 @@ IM.defaultConfig = {
         ["Keys"] = true,
 		["Glyphs"] = true,
 		["Quivers"] = true,
-		["Miscellaneous"] = true,
 		["Projectile"] = true,
     },
     minItemValue = 1,
@@ -1259,7 +1259,9 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
     end
 	
 	-- Miscellaneous analysis
-    if itemInfo.type == "Miscellaneous" and actualQuality == 0 then
+    if itemInfo.type == "Miscellaneous" then
+    -- Only suggest deletion for poor (0) uality miscellaneous items
+    if actualQuality == 0 then
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 6
@@ -1267,8 +1269,12 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         else
             itemInfo.shouldSuggestDelete = false
         end
+    else
+        -- For higher quality misc items return nil to skip entirely
+        return nil
     end
-
+end
+	
     -- Check against important items list
     for _, importantName in ipairs(importantItems) do
         if itemInfo.name and string.find(itemInfo.name, importantName) then
