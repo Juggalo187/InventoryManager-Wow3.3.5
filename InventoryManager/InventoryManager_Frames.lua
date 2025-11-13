@@ -1210,6 +1210,9 @@ function IM:UpdateAutoDeleteListFrame()
     -- Update title to show count
     IM_AutoDeleteListFrame.title:SetText(string.format("Auto-Delete List (%d items)", #self.autoDeleteList))
     
+    -- Clear existing widgets first
+    self:ClearFrameContent(IM_AutoDeleteListFrame.content, "IM_AutoDeleteItem_")
+    
     for i, autoDeleteItem in ipairs(self.autoDeleteList) do
         -- Double-check that itemID exists to prevent errors
         if not autoDeleteItem or not autoDeleteItem.itemID then
@@ -1280,8 +1283,18 @@ function IM:UpdateAutoDeleteListFrame()
             end)
             widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
             
+            -- FIXED: Proper remove button handler that refreshes the frame
             widget.removeBtn:SetScript("OnClick", function()
-                IM:RemoveFromAutoDeleteList(autoDeleteItem.itemID)
+                -- Store the item ID before removing
+                local itemIDToRemove = autoDeleteItem.itemID
+                
+                -- Remove from the list
+                if IM:RemoveFromAutoDeleteList(itemIDToRemove) then
+                    -- The frame will be automatically refreshed by RemoveFromAutoDeleteList
+                    print(string.format("Inventory Manager: Removed %s from auto-delete list", displayName))
+                else
+                    print("Inventory Manager: Failed to remove item from auto-delete list")
+                end
             end)
             
             widget:Show()
@@ -1551,10 +1564,17 @@ end
 
 -- Utility functions for frame management
 function IM:ClearFrameContent(frame, prefix)
-    for i = 1, 50 do
+    for i = 1, 100 do  -- Increased from 50 to be safe
         local child = _G[prefix..i]
         if child then
             child:Hide()
+            -- Optional: Clear scripts to prevent memory leaks
+            child:SetScript("OnClick", nil)
+            child:SetScript("OnEnter", nil)
+            child:SetScript("OnLeave", nil)
+        else
+            -- Stop when we run out of widgets
+            break
         end
     end
 end

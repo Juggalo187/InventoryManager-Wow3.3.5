@@ -141,46 +141,58 @@ function IM:CreateConfigPanel()
         end)
     end
     
-    -- Trade Goods Categories
+        -- Trade Goods Categories
     local tradeGoodsTitle = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     tradeGoodsTitle:SetPoint("TOPLEFT", 350, -60)
     tradeGoodsTitle:SetText("Ignore Trade Goods:")
     
-    local tradeGoodsCategories = {"Cloth", "Leather", "Metal", "Stone", "Meat", "Fish", "Herb", "Elemental", "Enchanting", "Jewelcrafting", "Gem", "Parts", "Other"}
+    local tradeGoodsCategories = {"Cloth", "Leather", "Metal", "Stone", "Meat", "Herb", "Elemental", "Enchanting", "Jewelcrafting", "Gem", "Parts", "Other"}
     local tradeGoodsCheckboxes = {}
     
     for i, category in ipairs(tradeGoodsCategories) do
-        -- Create a container frame for each checkbox
+        -- Create a container frame for proper alignment
         local container = CreateFrame("Frame", nil, frame.scrollChild)
         container:SetSize(120, 25)
         
         -- Position the container
-        if i <= 6 then
+        if i <= 7 then
             container:SetPoint("TOPLEFT", 360, -90 - ((i-1) * 30))
         else
             container:SetPoint("TOPLEFT", 460, -90 - ((i-7) * 30))
         end
         
-        -- Create checkbox manually
-        local checkbox = CreateFrame("CheckButton", nil, container, "UICheckButtonTemplate")
-        checkbox:SetSize(25, 25)
-        checkbox:SetPoint("LEFT", 0, 0)
+        -- Create checkbox using UICheckButtonTemplate
+        tradeGoodsCheckboxes[category] = CreateFrame("CheckButton", nil, container, "UICheckButtonTemplate")
+        tradeGoodsCheckboxes[category]:SetSize(25, 25)
+        tradeGoodsCheckboxes[category]:SetPoint("LEFT", 0, 0)
         
         -- Create text label
         local text = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        text:SetPoint("LEFT", checkbox, "RIGHT", 5, 0)
+        text:SetPoint("LEFT", tradeGoodsCheckboxes[category], "RIGHT", 5, 0)
         text:SetText(category)
         
         -- Store reference
-        tradeGoodsCheckboxes[category] = checkbox
+        tradeGoodsCheckboxes[category].text = text
+        tradeGoodsCheckboxes[category].container = container
         
-        -- Set initial state
-        local isChecked = self.db.ignoreTradeGoodsTypes[category] and true or false
-        checkbox:SetChecked(isChecked)
+        -- Get the current value, ensuring it exists
+        local currentValue = self.db.ignoreTradeGoodsTypes[category]
+        if currentValue == nil then
+            -- If the value doesn't exist, set it to the default and save
+            currentValue = self.defaultConfig.ignoreTradeGoodsTypes[category] or false
+            self.db.ignoreTradeGoodsTypes[category] = currentValue
+            self:SaveConfig()
+        end
+        
+        tradeGoodsCheckboxes[category]:SetChecked(currentValue)
         
         -- Set click handler
-        checkbox:SetScript("OnClick", function(self)
+        tradeGoodsCheckboxes[category]:SetScript("OnClick", function(self)
             local checked = self:GetChecked()
+            -- Convert nil to false for unchecked boxes
+            if checked == nil then
+                checked = false
+            end
             IM.db.ignoreTradeGoodsTypes[category] = checked
             IM:SaveConfig()
             IM:RefreshUI()
@@ -410,15 +422,23 @@ function IM:CreateConfigPanel()
         
         for i, typeName in ipairs(itemTypes) do
             if typeCheckboxes[typeName] then
-                local isChecked = IM.db.ignoreItemTypes[typeName] and true or false
+                local isChecked = IM.db.ignoreItemTypes[typeName]
+                if isChecked == nil then
+                    isChecked = IM.defaultConfig.ignoreItemTypes[typeName] or false
+                end
                 typeCheckboxes[typeName]:SetChecked(isChecked)
             end
         end
         
-        -- Refresh trade goods checkboxes
+        -- Refresh trade goods checkboxes - FIXED: Handle nil values
         for i, category in ipairs(tradeGoodsCategories) do
             if tradeGoodsCheckboxes[category] then
-                local isChecked = IM.db.ignoreTradeGoodsTypes[category] and true or false
+                local isChecked = IM.db.ignoreTradeGoodsTypes[category]
+                if isChecked == nil then
+                    isChecked = IM.defaultConfig.ignoreTradeGoodsTypes[category] or false
+                    IM.db.ignoreTradeGoodsTypes[category] = isChecked
+                    IM:SaveConfig()
+                end
                 tradeGoodsCheckboxes[category]:SetChecked(isChecked)
             end
         end

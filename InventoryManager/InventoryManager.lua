@@ -34,7 +34,6 @@ IM.defaultConfig = {
 		["Stone"] = true,
 		["Gem"] = true,
 		["Meat"] = true,
-		["Fish"] = true,
 		["Herb"] = true,
 		["Elemental"] = true,
 		["Enchanting"] = true,
@@ -44,6 +43,7 @@ IM.defaultConfig = {
 	},
 	alawaysignore = {
 		["Containers"] = true,
+		["Container"] = true,
         ["Currency"] = true,
         ["Keys"] = true,
 		["Glyphs"] = true,
@@ -645,7 +645,6 @@ function IM:GetTradeGoodsCategory(subType)
         ["Pork"] = "Meat",
         ["Beef"] = "Meat",
         ["Chicken"] = "Meat",
-        ["Fish"] = "Fish",
         
         -- Herbs
         ["Herb"] = "Herb",
@@ -1152,8 +1151,35 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         "Arena Points",
         "Guild Charter",
     }
+    
+    -- Check if this is a consumable trade good (meat/fish that can be eaten)
+    local isConsumableTradeGood = false
+    if itemInfo.type == "Trade Goods" and (itemInfo.subType == "Meat" or itemInfo.subType == "Fish") then
+        -- Check if this item has a use effect (can be consumed)
+        local hasUseEffect = false
+        
+        -- Try to determine if it's consumable by checking tooltip
+        local tooltip = CreateFrame("GameTooltip", "IMTempTooltip", UIParent, "GameTooltipTemplate")
+        tooltip:SetOwner(UIParent, "ANCHOR_NONE")
+        tooltip:SetHyperlink(itemInfo.link or link)
+        
+        for i = 2, 4 do  -- Check lines 2-4 for use effects
+            local text = _G["IMTempTooltipTextLeft"..i]:GetText()
+            if text and (string.find(text, "Use:") or string.find(text, "Restores") or string.find(text, "Consumable")) then
+                hasUseEffect = true
+                break
+            end
+        end
+        
+        tooltip:Hide()
+        
+        if hasUseEffect then
+            isConsumableTradeGood = true
+            itemInfo.type = "Consumable"  -- Reclassify as consumable
+        end
+    end
 	
-	-- CHECK ITEM TYPE FILTERING FIRST
+    -- CHECK ITEM TYPE FILTERING FIRST
     if self.db.ignoreItemTypes[itemInfo.type] then
         return nil
     end
@@ -1205,8 +1231,8 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         end
     end
 	
-    -- Trade goods analysis
-    if itemInfo.type == "Trade Goods" then
+    -- Trade goods analysis (now excludes consumable meat/fish)
+    if itemInfo.type == "Trade Goods" and not isConsumableTradeGood then
         local tradeGoodsCategory = self:GetTradeGoodsCategory(itemInfo.subType)
         
         if self.db.ignoreTradeGoodsTypes[tradeGoodsCategory] then
@@ -1247,8 +1273,8 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         end
     end
     
-    -- Consumable analysis
-    if itemInfo.type == "Consumable" then
+    -- Consumable analysis (now includes consumable meat/fish)
+    if itemInfo.type == "Consumable" or isConsumableTradeGood then
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 5
@@ -1374,18 +1400,27 @@ function IM:RemoveFromAutoDeleteList(itemID)
         return false
     end
     
+    local removed = false
     for i = #self.autoDeleteList, 1, -1 do
         local autoDeleteItem = self.autoDeleteList[i]
         if autoDeleteItem and autoDeleteItem.itemID == itemID then
             table.remove(self.autoDeleteList, i)
-            self:SaveAutoDeleteList()
-            IM:RefreshUI()
-            
-            if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
-                self:UpdateAutoDeleteListFrame()
-            end
-            return true
+            removed = true
+            break
         end
+    end
+    
+    if removed then
+        self:SaveAutoDeleteList()
+        
+        -- Force immediate UI refresh
+        if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
+            self:UpdateAutoDeleteListFrame() -- This will refresh the display
+        end
+        
+        -- Also refresh main UI if it's showing
+        self:RefreshUI()
+        return true
     end
     
     return false
@@ -1976,10 +2011,20 @@ function IM:OnInitialize()
     -- Load configuration first
     if IM_ConfigDB then
         self.db = IM_ConfigDB
+        print("Inventory Manager: Loading existing config")
+        
         -- Ensure all default config values exist
         for k, v in pairs(self.defaultConfig) do
             if self.db[k] == nil then
                 self.db[k] = v
+            end
+        end
+        
+        -- FIXED: Ensure ALL trade goods categories exist in the database
+        for category, defaultValue in pairs(self.defaultConfig.ignoreTradeGoodsTypes) do
+            if self.db.ignoreTradeGoodsTypes[category] == nil then
+                self.db.ignoreTradeGoodsTypes[category] = defaultValue
+                print(string.format("Inventory Manager: Initializing missing trade goods category: %s = %s", category, tostring(defaultValue)))
             end
         end
         
@@ -2003,7 +2048,7 @@ function IM:OnInitialize()
                 self.db.alawaysignore[typeName] = defaultValue
             end
         end
-		
+		self.db.alawaysignore["Miscellaneous"] = false
         
         -- Ensure trade goods settings exist
         for typeName, defaultValue in pairs(self.defaultConfig.ignoreTradeGoodsTypes) do
