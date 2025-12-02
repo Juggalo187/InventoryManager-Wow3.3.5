@@ -38,6 +38,7 @@ IM.defaultConfig = {
 		["Elemental"] = true,
 		["Enchanting"] = true,
 		["Jewelcrafting"] = true,
+		["Inscription"] = true, 
 		["Parts"] = true,
 		["Other"] = true,
 	},
@@ -619,7 +620,7 @@ function IM:GetQualityKey(quality)
     return qualityMap[quality] or "COMMON"
 end
 
-function IM:GetTradeGoodsCategory(subType)
+function IM:GetTradeGoodsCategory(subType, itemName)
     local categoryMap = {
         -- Cloth
         ["Cloth"] = "Cloth",
@@ -630,13 +631,12 @@ function IM:GetTradeGoodsCategory(subType)
         ["Hide"] = "Leather",
         ["Scale"] = "Leather",
         
-        -- Metal (separated)
-        ["Metal & Stone"] = "Metal",  -- Fallback
+        -- Metal
         ["Ore"] = "Metal",
         ["Bar"] = "Metal",
         ["Metal"] = "Metal",
         
-        -- Stone (new category)
+        -- Stone
         ["Stone"] = "Stone",
         
         -- Meat
@@ -667,11 +667,43 @@ function IM:GetTradeGoodsCategory(subType)
         ["Jewelcrafting"] = "Jewelcrafting",
         ["Gem"] = "Jewelcrafting",
         
+        -- Inscription
+        ["Inscription"] = "Inscription",
+        ["Pigment"] = "Inscription",
+        ["Ink"] = "Inscription",
+        ["Scroll"] = "Inscription",
+        ["Glyph"] = "Inscription",
+        ["Item Enhancement"] = "Inscription",
+        
         -- Parts
         ["Parts"] = "Parts",
         ["Explosives"] = "Parts",
         ["Devices"] = "Parts",
     }
+    
+    -- Special handling for "Metal & Stone" - check the item name
+    if subType == "Metal & Stone" then
+        if itemName then
+            local lowerName = itemName:lower()
+            -- Stone items
+            if string.find(lowerName, "stone") or string.find(lowerName, "rock") or string.find(lowerName, "pebble") then
+                return "Stone"
+            -- Metal items (ores, bars, etc.)
+            elseif string.find(lowerName, "ore") or string.find(lowerName, "bar") or string.find(lowerName, "ingot") or 
+                   string.find(lowerName, "copper") or string.find(lowerName, "tin") or string.find(lowerName, "iron") or
+                   string.find(lowerName, "mithril") or string.find(lowerName, "thorium") or string.find(lowerName, "fel iron") or
+                   string.find(lowerName, "cobalt") or string.find(lowerName, "saronite") then
+                return "Metal"
+            end
+        end
+        -- Default to Stone for ambiguous "Metal & Stone" items
+        return "Stone"
+    end
+    
+    -- For "Other" subType, we need to check the item name to categorize properly
+    if subType == "Other" then
+        return "Other"
+    end
     
     return categoryMap[subType] or "Other"
 end
@@ -1233,7 +1265,19 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
 	
     -- Trade goods analysis (now excludes consumable meat/fish)
     if itemInfo.type == "Trade Goods" and not isConsumableTradeGood then
-        local tradeGoodsCategory = self:GetTradeGoodsCategory(itemInfo.subType)
+        local tradeGoodsCategory = self:GetTradeGoodsCategory(itemInfo.subType, itemInfo.name)
+        
+        -- Special handling for "Other" subType - check if it's actually an inscription item
+        if itemInfo.subType == "Other" then
+            -- Check if this is an inscription-related item by name
+            if itemInfo.name and (string.find(itemInfo.name:lower(), "pigment") or 
+                                  string.find(itemInfo.name:lower(), "ink") or
+                                  string.find(itemInfo.name:lower(), "scroll") or
+                                  string.find(itemInfo.name:lower(), "glyph") or
+                                  string.find(itemInfo.name:lower(), "vellum")) then
+                tradeGoodsCategory = "Inscription"
+            end
+        end
         
         if self.db.ignoreTradeGoodsTypes[tradeGoodsCategory] then
             return nil

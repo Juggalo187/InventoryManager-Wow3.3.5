@@ -128,7 +128,7 @@ function IM:UpdateToggleIcon()
     if month == 10 then -- October (Halloween)
         iconPath = "Interface\\Icons\\inv_misc_bag_28_halloween" -- Pumpkin Bag
     elseif month == 12 then -- December (Winter Veil)
-        iconPath = "Interface\\Icons\\calendar_winterveilstart" -- Red Winter Veil Bag
+        iconPath = "Interface\\Icons\\Inv_holiday_christmas_present_01" -- Red Winter Veil Bag
     elseif month == 2 then -- February (Love is in the Air)
         iconPath = "Interface\\Icons\\INV_ValentinesCard01" -- Love Token
     elseif month == 4 then -- April (Noblegarden)

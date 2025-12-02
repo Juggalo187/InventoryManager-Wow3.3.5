@@ -145,8 +145,8 @@ function IM:CreateConfigPanel()
     local tradeGoodsTitle = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     tradeGoodsTitle:SetPoint("TOPLEFT", 350, -60)
     tradeGoodsTitle:SetText("Ignore Trade Goods:")
-    
-    local tradeGoodsCategories = {"Cloth", "Leather", "Metal", "Stone", "Meat", "Herb", "Elemental", "Enchanting", "Jewelcrafting", "Gem", "Parts", "Other"}
+   
+    local tradeGoodsCategories = {"Cloth", "Leather", "Metal", "Stone", "Meat", "Herb", "Elemental", "Enchanting", "Jewelcrafting", "Gem", "Parts", "Inscription", "Other"}
     local tradeGoodsCheckboxes = {}
     
     for i, category in ipairs(tradeGoodsCategories) do
@@ -154,11 +154,14 @@ function IM:CreateConfigPanel()
         local container = CreateFrame("Frame", nil, frame.scrollChild)
         container:SetSize(120, 25)
         
-        -- Position the container
-        if i <= 7 then
+         -- Position the container - adjust for 13 categories
+        if i <= 6 then
             container:SetPoint("TOPLEFT", 360, -90 - ((i-1) * 30))
-        else
+        elseif i <= 12 then
             container:SetPoint("TOPLEFT", 460, -90 - ((i-7) * 30))
+        else
+            -- For the 13th category (Other), position it below the first column
+            container:SetPoint("TOPLEFT", 360, -90 - (6 * 30))
         end
         
         -- Create checkbox using UICheckButtonTemplate
@@ -189,10 +192,11 @@ function IM:CreateConfigPanel()
         -- Set click handler
         tradeGoodsCheckboxes[category]:SetScript("OnClick", function(self)
             local checked = self:GetChecked()
-            -- Convert nil to false for unchecked boxes
-            if checked == nil then
-                checked = false
-            end
+            if checked == 1 then
+				checked = true
+			else
+				checked = false
+			end
             IM.db.ignoreTradeGoodsTypes[category] = checked
             IM:SaveConfig()
             IM:RefreshUI()
@@ -310,10 +314,15 @@ function IM:CreateConfigPanel()
     -- Auto-sell at vendor
     local autoSellCheckbox = CreateFrame("CheckButton", "IM_AutoSellCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
     autoSellCheckbox:SetPoint("TOPLEFT", 20, -450)
-    _G[autoSellCheckbox:GetName().."Text"]:SetText("Automatically sell vendor list items at vendors")
+    _G[autoSellCheckbox:GetName().."Text"]:SetText("Auto-sell at vendors")
     autoSellCheckbox:SetChecked(self.db.autoSellAtVendor)
     autoSellCheckbox:SetScript("OnClick", function(self)
         IM.db.autoSellAtVendor = self:GetChecked()
+		if IM.db.autoSellAtVendor == 1 then
+			IM.db.autoSellAtVendor = true
+		else
+			IM.db.autoSellAtVendor = false
+		end
         IM:SaveConfig()
     end)
     
@@ -430,7 +439,7 @@ function IM:CreateConfigPanel()
             end
         end
         
-        -- Refresh trade goods checkboxes - FIXED: Handle nil values
+        -- Refresh trade goods checkboxes
         for i, category in ipairs(tradeGoodsCategories) do
             if tradeGoodsCheckboxes[category] then
                 local isChecked = IM.db.ignoreTradeGoodsTypes[category]
