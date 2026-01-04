@@ -1122,6 +1122,10 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         return itemInfo
     end
 	
+	if actualQuality >= 3 then
+		return nil
+	end
+	
     -- Never suggest deleting these important items, regardless of type
     local importantItems = {
         "Hearthstone",

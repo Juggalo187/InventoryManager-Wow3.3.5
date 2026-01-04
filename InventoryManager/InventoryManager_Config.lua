@@ -95,15 +95,11 @@ function IM:CreateConfigPanel()
         [0] = "|cFF9D9D9D",
     }
     
-    local qualityOrder = {"POOR", "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "ARTIFACT"}
+    local qualityOrder = {"POOR", "COMMON", "UNCOMMON"}
     local qualityDisplayNames = {
         POOR = "Poor (Grey)",
         COMMON = "Common (White)", 
-        UNCOMMON = "Uncommon (Green)",
-        RARE = "Rare (Blue)",
-        EPIC = "Epic (Purple)",
-        LEGENDARY = "Legendary (Orange)",
-        ARTIFACT = "Artifact (Gold)"
+        UNCOMMON = "Uncommon (Green)"
     }
     
     for i, qualityKey in ipairs(qualityOrder) do
