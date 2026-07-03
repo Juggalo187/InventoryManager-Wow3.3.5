@@ -2030,7 +2030,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         if IM and IM.db and IM.db.showSellListAtVendor then
             IM:RefreshVendorListLocations()
-            IM:ShowSellListFrame()
+            IM:ShowSellListFrame(true)
         end
     elseif event == "MERCHANT_CLOSED" then
         if IM_SellListFrame and IM_SellListFrame:IsShown() then

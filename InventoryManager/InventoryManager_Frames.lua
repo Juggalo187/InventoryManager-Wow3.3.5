@@ -703,9 +703,9 @@ function IM:CreateMainFrame()
 		if IM_SellListFrame and IM_SellListFrame:IsShown() then
 			IM_SellListFrame:Hide()
 		else
-			IM:ShowSellListFrame()
+			IM:ShowSellListFrame(false)
 		end
-    end)
+	end)
     
     -- Ignored Items button
     frame.ignoredListBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -1168,12 +1168,12 @@ function IM:ShowSuggestions()
     end
 end
 
-function IM:ShowSellListFrame()
+function IM:ShowSellListFrame(showOnlyInventory)
     if not IM_SellListFrame then
         self:CreateSellListFrame()
     end
     self:RefreshVendorListLocations()
-    self:UpdateSellListFrame()
+    self:UpdateSellListFrame(showOnlyInventory or false)
     IM_SellListFrame:Show()
 end
 
@@ -1350,17 +1350,34 @@ function IM:UpdateMainFrame(suggestions, totalSlots, usedSlots)
     end
 end
 
-function IM:UpdateSellListFrame()
+function IM:UpdateSellListFrame(showOnlyInventory)
     if not IM_SellListFrame then return end
     
+    showOnlyInventory = showOnlyInventory or false
     self:ClearFrameContent(IM_SellListFrame.content, "IM_SellListItem_")
     
     local totalValue = 0
     local itemsInInventory = 0
-    local contentHeight = math.max(400, #self.vendorList * 45 + 10)
+    local visibleItems = {}
+    
+    -- Build a filtered list based on the flag
+    for _, vendorItem in ipairs(self.vendorList) do
+        local inInventory = vendorItem.totalCount > 0
+        if inInventory then
+            itemsInInventory = itemsInInventory + 1
+        end
+        -- Only add to visible list if we are showing all, OR it is in inventory
+        if not showOnlyInventory or inInventory then
+            table.insert(visibleItems, vendorItem)
+        end
+    end
+    
+    local contentHeight = math.max(400, #visibleItems * 45 + 10)
     IM_SellListFrame.content:SetHeight(contentHeight)
     
-    for i, vendorItem in ipairs(self.vendorList) do
+    -- Render only the visible items
+    for i, vendorItem in ipairs(visibleItems) do
+        local inInventory = vendorItem.totalCount > 0
         local widget = _G["IM_SellListItem_"..i] or CreateFrame("Button", "IM_SellListItem_"..i, IM_SellListFrame.content)
         widget:SetSize(350, 40)
         
@@ -1382,14 +1399,11 @@ function IM:UpdateSellListFrame()
             widget.value:SetSize(150, 20)
             widget.value:SetJustifyH("LEFT")
             widget.value:SetTextColor(1, 1, 0)
-            
-            -- Add status text
             widget.status = widget:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             widget.status:SetPoint("TOPLEFT", 40, -20)
             widget.status:SetSize(200, 20)
             widget.status:SetJustifyH("LEFT")
-            widget.status:SetTextColor(1, 0.5, 0.5) -- Reddish color for warnings
-            
+            widget.status:SetTextColor(1, 0.5, 0.5)
             widget.removeBtn = CreateFrame("Button", nil, widget, "UIPanelButtonTemplate")
             widget.removeBtn:SetSize(60, 20)
             widget.removeBtn:SetPoint("RIGHT", -5, 0)
@@ -1401,34 +1415,28 @@ function IM:UpdateSellListFrame()
         widget.icon:SetTexture(texture)
         local qualityColor = self.qualityColors[vendorItem.quality] or "|cFFFFFFFF"
         
-        -- Check if item is CURRENTLY in inventory (using refreshed data)
-        local inInventory = vendorItem.totalCount > 0
-        if inInventory then
-            itemsInInventory = itemsInInventory + 1
-        end
         local countText = inInventory and string.format("(|cFFFFFFFFx%d|r)", vendorItem.totalCount) or ""
-        
         widget.name:SetText(qualityColor .. (vendorItem.displayName or vendorItem.name) .. "|r " .. countText)
         
-        -- Set status and appearance based on current inventory presence
         if inInventory then
-            widget.status:SetText("") -- Clear status
+            widget.status:SetText("")
             local totalCopper = math.floor(vendorItem.stackValue * 10000 + 0.5)
             local valueText = self:FormatMoneyWithIcons(totalCopper)
             widget.value:SetText("|cFFFFFF00" .. valueText .. "|r")
             totalValue = totalValue + vendorItem.stackValue
-            widget.icon:SetAlpha(1.0) -- Full opacity
+            widget.icon:SetAlpha(1.0)
             widget.name:SetAlpha(1.0)
             widget.value:SetAlpha(1.0)
         else
+            -- This only runs if showOnlyInventory is false (manual open)
             widget.status:SetText("|cFFFF0000Not in inventory|r")
             widget.value:SetText("|cFF8080800g 0s 0c|r")
-            widget.icon:SetAlpha(0.4) -- Semi-transparent
+            widget.icon:SetAlpha(0.4)
             widget.name:SetAlpha(0.6)
             widget.value:SetAlpha(0.6)
         end
         
-        -- Set background color based on inventory presence
+        -- Set background color
         if inInventory then
             if vendorItem.quality and self.qualityColors[vendorItem.quality] then
                 local color = self.qualityColors[vendorItem.quality]
@@ -1441,7 +1449,6 @@ function IM:UpdateSellListFrame()
                 widget.bg:SetTexture(0.1, 0.1, 0.1, 0.7)
             end
         else
-            -- Grey background for items not in inventory
             widget.bg:SetTexture(0.3, 0.3, 0.3, 0.3)
         end
         
@@ -1460,7 +1467,7 @@ function IM:UpdateSellListFrame()
                 local perItemText = IM:FormatMoneyWithIcons(perItemCopper)
                 GameTooltip:AddLine("Per Item: " .. perItemText, 0.8, 0.8, 0.8)
             end
-            if vendorItem.totalCount == 0 then
+            if not inInventory then
                 GameTooltip:AddLine("|cFFFF0000Item not currently in inventory|r", 1, 0.5, 0.5)
             end
             GameTooltip:Show()
@@ -1475,7 +1482,7 @@ function IM:UpdateSellListFrame()
         widget.vendorItem = vendorItem
     end
     
-    -- Update total value and title to show current state
+    -- Update footer text
     local totalCopper = math.floor(totalValue * 10000 + 0.5)
     local formattedValue = self:FormatMoneyWithIcons(totalCopper)
     IM_SellListFrame.totalValue:SetText(string.format("Total Value: %s (%d/%d items in inventory)", 
