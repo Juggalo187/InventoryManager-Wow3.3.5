@@ -824,6 +824,51 @@ function IM:CreateSellListFrame()
         IM:ClearVendorList()
         IM:UpdateSellListFrame()
     end)
+	
+	-- Enable drop receiving
+	frame:SetScript("OnReceiveDrag", function(self)
+		local cursorType, id, link = GetCursorInfo()
+		if cursorType == "item" then
+			local itemID = id
+			if not itemID then
+				itemID = IM:GetItemIDFromLink(link)
+			end
+			if itemID then
+				local name, itemLink, quality, iLevel, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemID)
+				if name and sellPrice then
+					local locations, totalCount, stackValue = IM:GetItemLocations(itemID)
+					if totalCount and totalCount > 0 then
+						local displayName = string.match(itemLink or link, "%[(.-)%]") or name
+						local suggestion = {
+							itemID = itemID,
+							name = name,
+							link = itemLink or link,
+							quality = quality,
+							type = type,
+							subType = subType,
+							sellPrice = sellPrice,
+							locations = locations,
+							totalCount = totalCount,
+							stackValue = stackValue,
+							displayName = displayName
+						}
+						IM:AddToVendorList(suggestion)
+						ClearCursor()
+						print(string.format("Inventory Manager: Added %s to sell list", displayName))
+					else
+						print("Inventory Manager: Item not found in inventory")
+						ClearCursor()
+					end
+				else
+					print("Inventory Manager: Could not get item info")
+					ClearCursor()
+				end
+			else
+				print("Inventory Manager: Could not identify item")
+				ClearCursor()
+			end
+		end
+	end)
     
     IM_SellListFrame = frame
 end
@@ -1172,8 +1217,9 @@ function IM:ShowSellListFrame(showOnlyInventory)
     if not IM_SellListFrame then
         self:CreateSellListFrame()
     end
+    IM_SellListFrame.filterMode = showOnlyInventory or false
     self:RefreshVendorListLocations()
-    self:UpdateSellListFrame(showOnlyInventory or false)
+    self:UpdateSellListFrame(IM_SellListFrame.filterMode)
     IM_SellListFrame:Show()
 end
 
@@ -1352,24 +1398,39 @@ end
 
 function IM:UpdateSellListFrame(showOnlyInventory)
     if not IM_SellListFrame then return end
-    
-    showOnlyInventory = showOnlyInventory or false
+	
+	 if showOnlyInventory == nil then
+        showOnlyInventory = IM_SellListFrame.filterMode or false
+    end
+	
     self:ClearFrameContent(IM_SellListFrame.content, "IM_SellListItem_")
     
     local totalValue = 0
     local itemsInInventory = 0
     local visibleItems = {}
+    local inInventoryItems = {}
+    local notInInventoryItems = {}
     
-    -- Build a filtered list based on the flag
     for _, vendorItem in ipairs(self.vendorList) do
         local inInventory = vendorItem.totalCount > 0
         if inInventory then
             itemsInInventory = itemsInInventory + 1
         end
-        -- Only add to visible list if we are showing all, OR it is in inventory
         if not showOnlyInventory or inInventory then
-            table.insert(visibleItems, vendorItem)
+            if inInventory then
+                table.insert(inInventoryItems, vendorItem)
+            else
+                table.insert(notInInventoryItems, vendorItem)
+            end
         end
+    end
+    
+    -- Combine: items in inventory first, then items not in inventory
+    for _, item in ipairs(inInventoryItems) do
+        table.insert(visibleItems, item)
+    end
+    for _, item in ipairs(notInInventoryItems) do
+        table.insert(visibleItems, item)
     end
     
     local contentHeight = math.max(400, #visibleItems * 45 + 10)

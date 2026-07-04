@@ -919,17 +919,18 @@ function IM:RefreshUI()
     if IM_MainFrame and IM_MainFrame:IsShown() then
         self:ShowSuggestions()
     end
-    
+
     -- Refresh sell list frame if visible
     if IM_SellListFrame and IM_SellListFrame:IsShown() then
-        self:UpdateSellListFrame()
+        local filterMode = IM_SellListFrame.filterMode or false
+        self:UpdateSellListFrame(filterMode)
     end
-    
+
     -- Refresh ignored list frame if visible
     if IM_IgnoredListFrame and IM_IgnoredListFrame:IsShown() then
         self:UpdateIgnoredListFrame()
     end
-    
+
     -- Refresh auto-delete list frame if visible
     if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
         self:UpdateAutoDeleteListFrame()
@@ -960,6 +961,34 @@ function IM:GetItemIDFromLink(link)
     if not link then return nil end
     local itemID = string.match(link, "item:(%d+):")
     return itemID and tonumber(itemID) or nil
+end
+
+function IM:GetItemLocations(itemID)
+    local locations = {}
+    local totalCount = 0
+    local stackValue = 0
+    local sellPrice = 0
+
+    -- Get sell price from item info
+    local _, _, _, _, _, _, _, _, _, _, price = GetItemInfo(itemID)
+    sellPrice = price or 0
+
+    for bag = 0, 4 do
+        local slots = GetContainerNumSlots(bag)
+        for slot = 1, slots do
+            local texture, count, locked, quality, readable, lootable, link = GetContainerItemInfo(bag, slot)
+            if texture and link then
+                local id = self:GetItemIDFromLink(link)
+                if id == itemID then
+                    table.insert(locations, {bag = bag, slot = slot, count = count})
+                    totalCount = totalCount + count
+                    stackValue = stackValue + (sellPrice * count / 10000)
+                end
+            end
+        end
+    end
+
+    return locations, totalCount, stackValue
 end
 
 function IM:ScanInventory()
@@ -2038,16 +2067,17 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         IM:ScheduleRefresh()
     elseif event == "LOOT_CLOSED" then
-        if IM and IM.db and IM.db.autoOpenOnLowSpace then
-            IM:CheckBagSpaceAndOpen()
-        end
+		if IM and IM.db and IM.db.autoOpenOnLowSpace then
+			IM:CheckBagSpaceAndOpen()
+		end
 		IM:ProcessAutoDeleteItems()
-        IM:ScheduleRefresh()
-    elseif event == "BAG_UPDATE" then
-        local bagID = ...
-        if bagID and bagID >= 0 and bagID <= 4 then
-            IM:ScheduleRefresh()
-        end
+		IM:ScheduleRefresh()
+	elseif event == "BAG_UPDATE" then
+		local bagID = ...
+		if bagID and bagID >= 0 and bagID <= 4 then
+			IM:ProcessAutoDeleteItems()
+			IM:ScheduleRefresh()
+		end
 	elseif event == "PLAYER_LOGIN" then
         if IM and IM.UpdateToggleIcon then
             IM:UpdateToggleIcon()
