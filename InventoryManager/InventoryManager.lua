@@ -51,7 +51,7 @@ IM.defaultConfig = {
 		["Quivers"] = true,
 		["Projectile"] = true,
     },
-    minItemValue = 1,
+    minItemValue = 0.25,
     autoSellAtVendor = false,
     showSellListAtVendor = false,
 	autoOpenOnLowSpace = false,
