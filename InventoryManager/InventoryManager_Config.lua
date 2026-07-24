@@ -342,28 +342,29 @@ function IM:CreateConfigPanel()
         IM:SaveConfig()
     end)
     
-    -- Low space threshold slider 
-    local thresholdLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    thresholdLabel:SetPoint("TOPLEFT", 40, -540)
-    thresholdLabel:SetText("Low space threshold:")
-    thresholdLabel:SetTextColor(1, 1, 1)
-    
-    local thresholdSlider = CreateFrame("Slider", "IM_ThresholdSlider", frame.scrollChild, "OptionsSliderTemplate")
-    thresholdSlider:SetPoint("TOPLEFT", 200, -540)
-    thresholdSlider:SetWidth(150)
-    thresholdSlider:SetHeight(17)
-    thresholdSlider:SetMinMaxValues(50, 95)
-    thresholdSlider:SetValueStep(5)
-    thresholdSlider:SetValue(self.db.lowSpaceThreshold * 100)
-    _G[thresholdSlider:GetName().."Text"]:SetText(string.format("%d%%", self.db.lowSpaceThreshold * 100))
-    _G[thresholdSlider:GetName().."Low"]:SetText("50%")
-    _G[thresholdSlider:GetName().."High"]:SetText("95%")
-    
-    thresholdSlider:SetScript("OnValueChanged", function(self, value)
-        IM.db.lowSpaceThreshold = value / 100
-        _G[self:GetName().."Text"]:SetText(string.format("%d%%", value))
-        IM:SaveConfig()
-    end)
+    -- Low space threshold slider (replaces percentage slider)
+	local thresholdLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	thresholdLabel:SetPoint("TOPLEFT", 40, -540)
+	thresholdLabel:SetText("Auto-open when free slots ≤ :")
+	thresholdLabel:SetTextColor(1, 1, 1)
+	
+	local thresholdSlider = CreateFrame("Slider", "IM_ThresholdSlider", frame.scrollChild, "OptionsSliderTemplate")
+	thresholdSlider:SetPoint("TOPLEFT", 220, -540)   -- adjusted X
+	thresholdSlider:SetWidth(150)
+	thresholdSlider:SetHeight(17)
+	thresholdSlider:SetMinMaxValues(1, 5)            -- 1 to 5 slots
+	thresholdSlider:SetValueStep(1)                  -- integer steps
+	thresholdSlider:SetValue(self.db.freeSlotsThreshold or 3)
+	_G[thresholdSlider:GetName().."Text"]:SetText(string.format("%d slots", self.db.freeSlotsThreshold or 3))
+	_G[thresholdSlider:GetName().."Low"]:SetText("1")
+	_G[thresholdSlider:GetName().."High"]:SetText("5")
+	
+	thresholdSlider:SetScript("OnValueChanged", function(self, value)
+		value = math.floor(value + 0.5)  -- ensure integer
+		IM.db.freeSlotsThreshold = value
+		_G[self:GetName().."Text"]:SetText(string.format("%d slots", value))
+		IM:SaveConfig()
+	end)
     
     local deletionLogCheckbox = CreateFrame("CheckButton", "IM_DeletionLogCheckbox", frame.scrollChild, "OptionsCheckButtonTemplate")
     deletionLogCheckbox:SetPoint("TOPLEFT", 20, -570)
@@ -463,8 +464,8 @@ function IM:CreateConfigPanel()
         showSellListCheckbox:SetChecked(IM.db.showSellListAtVendor)
         autoOpenCheckbox:SetChecked(IM.db.autoOpenOnLowSpace)
         deletionLogCheckbox:SetChecked(IM.db.deletionLogEnabled)
-        thresholdSlider:SetValue(IM.db.lowSpaceThreshold * 100)
-        _G[thresholdSlider:GetName().."Text"]:SetText(string.format("%d%%", IM.db.lowSpaceThreshold * 100))
+		thresholdSlider:SetValue(IM.db.freeSlotsThreshold or 3)
+		_G[thresholdSlider:GetName().."Text"]:SetText(string.format("%d slots", IM.db.freeSlotsThreshold or 3))
     end)
     
     -- Hide by default

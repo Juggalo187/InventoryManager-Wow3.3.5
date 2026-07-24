@@ -56,7 +56,7 @@ IM.defaultConfig = {
     showSellListAtVendor = false,
 	autoOpenOnLowSpace = false,
 	ignoreGearValue = false,
-    lowSpaceThreshold = 0.9,
+    freeSlotsThreshold = 3,
 	autoDeleteEnabled = false,
 	toggleIconPosition = nil,
 	deletionLogEnabled = true,
@@ -901,15 +901,12 @@ function IM:CheckBagSpaceAndOpen()
         end
     end
     
-    if totalBagSlots > 0 then
-        local fillPercentage = usedBagSlots / totalBagSlots
-        if fillPercentage >= self.db.lowSpaceThreshold then
-            -- Only open if not already showing and not at vendor (to avoid overlap)
-            if not (IM_MainFrame and IM_MainFrame:IsShown()) and not MerchantFrame:IsShown() then
-                self:CreateFrames()
-                self:ShowSuggestions()
-                print(string.format("Inventory Manager: Auto-opened (bags %.1f%% full)", fillPercentage * 100))
-            end
+    local freeSlots = totalBagSlots - usedBagSlots
+    if freeSlots <= self.db.freeSlotsThreshold then
+        if not (IM_MainFrame and IM_MainFrame:IsShown()) and not MerchantFrame:IsShown() then
+            self:CreateFrames()
+            self:ShowSuggestions()
+            print(string.format("Inventory Manager: Auto-opened (only %d free slots)", freeSlots))
         end
     end
 end
@@ -1838,51 +1835,62 @@ function IM:RefreshVendorListLocations()
 end
 
 function IM:SellVendorItems()
-    if #self.vendorList == 0 then
-        return
-    end
     local totalValue = 0
     local itemsSold = 0
     local stacksSold = 0
-    
-    -- Track which items were actually sold
-    local soldItems = {}
-    
-    for _, vendorItem in ipairs(self.vendorList) do
-        local itemSoldCount = 0
-        local itemStackCount = 0
-        
-        for _, location in ipairs(vendorItem.locations) do
-            local texture, count, locked = GetContainerItemInfo(location.bag, location.slot)
-            if texture and not locked then
-                UseContainerItem(location.bag, location.slot)
-                totalValue = totalValue + ((vendorItem.sellPrice or 0) * count / 10000)
-                itemsSold = itemsSold + count
-                stacksSold = stacksSold + 1
-                itemSoldCount = itemSoldCount + count
-                itemStackCount = itemStackCount + 1
-            end
+
+    -- Helper to sell a single slot
+    local function SellSlot(bag, slot, sellPrice, count)
+        local texture, countInSlot, locked = GetContainerItemInfo(bag, slot)
+        if texture and not locked then
+            UseContainerItem(bag, slot)
+            local value = (sellPrice or 0) * (countInSlot or count or 1) / 10000
+            totalValue = totalValue + value
+            itemsSold = itemsSold + (countInSlot or count or 1)
+            stacksSold = stacksSold + 1
+            return true
         end
-        
-        -- Record if any of this item was sold
-        if itemSoldCount > 0 then
-            soldItems[vendorItem.itemID] = true
+        return false
+    end
+
+    -- 1) Sell manually added vendor list items
+    for _, vendorItem in ipairs(self.vendorList) do
+        for _, location in ipairs(vendorItem.locations) do
+            SellSlot(location.bag, location.slot, vendorItem.sellPrice, vendorItem.totalCount)
         end
     end
-    
+
+    -- 2) Sell all grey (quality 0) items – using GetItemInfo for reliable quality
+    for bag = 0, 4 do
+        local slots = GetContainerNumSlots(bag)
+        for slot = 1, slots do
+            local texture, count, locked, qualityFromLink, readable, lootable, link = GetContainerItemInfo(bag, slot)
+            if texture and not locked and link then
+                local itemID = self:GetItemIDFromLink(link)
+                if itemID then
+                    -- Get reliable quality from cached item info
+                    local _, _, itemQuality, _, _, _, _, _, _, _, sellPrice = GetItemInfo(itemID)
+                    if itemQuality == 0 and sellPrice and sellPrice > 0 then
+                        SellSlot(bag, slot, sellPrice, count)
+                    end
+                end
+            end
+        end
+    end
+
     if stacksSold > 0 then
         local totalCopper = math.floor(totalValue * 10000 + 0.5)
         local formattedValue = self:FormatMoneyWithIcons(totalCopper)
         print(string.format("Inventory Manager: Sold %d items (%d slots) for %s", itemsSold, stacksSold, formattedValue))
-        
-        -- Don't clear the vendor list - keep items for future sales
-        -- Just update the locations since we sold some items
+
+        -- Refresh vendor list locations (some items may have been sold)
         self:RefreshVendorListLocations()
-        
         IM:RefreshUI()
         if IM_SellListFrame and IM_SellListFrame:IsShown() then
             self:UpdateSellListFrame()
         end
+    else
+        print("Inventory Manager: No items to sell.")
     end
 end
 
@@ -2097,6 +2105,16 @@ function IM:OnInitialize()
                 self.db[k] = v
             end
         end
+		
+		-- Inside IM:OnInitialize(), after loading self.db
+		if self.db.freeSlotsThreshold == nil then
+			-- If old lowSpaceThreshold exists, we could use it to derive a value?
+			-- Simpler: set a default of 3
+			self.db.freeSlotsThreshold = 3
+			self:SaveConfig()
+		end
+		-- Optionally remove the old field to keep DB clean
+		self.db.lowSpaceThreshold = nil
         
         -- FIXED: Ensure ALL trade goods categories exist in the database
         for category, defaultValue in pairs(self.defaultConfig.ignoreTradeGoodsTypes) do
