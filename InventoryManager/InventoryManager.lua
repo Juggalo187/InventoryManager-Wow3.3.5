@@ -1,16 +1,57 @@
 local addonName, IM = ...
-if _G["InventoryManager"] then
-    return
-end
 _G["InventoryManager"] = IM
 IM_ADDON_LOADED = false
+
+local function MergeDefaults(target, defaults)
+    target = target or {}
+    for key, value in pairs(defaults) do
+        if type(value) == "table" then
+            target[key] = MergeDefaults(target[key], value)
+        elseif target[key] == nil then
+            target[key] = value
+        end
+    end
+    return target
+end
+
+function IM:InitDB()
+    -- Load existing SavedVariables or start fresh
+    self.db = IM_ConfigDB or {}
+    
+    -- Merge default configuration into self.db without overwriting custom settings
+    if IM.defaultConfig then
+        self.db = MergeDefaults(self.db, IM.defaultConfig)
+    end
+    
+    -- Ensure dynamic user tables exist
+    self.db.ignoredItems     = self.db.ignoredItems or {}
+    self.db.autoDeleteList   = self.db.autoDeleteList or {}
+    self.db.vendorList       = self.db.vendorList or {}
+    self.db.framePositions   = self.db.framePositions or {}
+    
+    -- Align shorthand references on IM
+    self.ignoredItems          = self.db.ignoredItems
+    self.autoDeleteList        = self.db.autoDeleteList
+    self.vendorList            = self.db.vendorList
+    self.ignoreItemTypes       = self.db.ignoreItemTypes
+    self.ignoreTradeGoodsTypes = self.db.ignoreTradeGoodsTypes
+    self.ignoreQuality         = self.db.ignoreQuality
+    self.alwaysignore          = self.db.alwaysignore
+    
+    -- Sync global SavedVariable variable
+    IM_ConfigDB = self.db
+end
+
+function IM:SaveConfig()
+    IM_ConfigDB = self.db
+end
 
 IM.detectedTypes = {}
 
 -- Default configuration
 IM.defaultConfig = {
     enabled = true,
-      ignoreQuality = {
+    ignoreQuality = {
         ["POOR"] = false,
         ["COMMON"] = true,
         ["UNCOMMON"] = true,
@@ -20,46 +61,46 @@ IM.defaultConfig = {
         ["ARTIFACT"] = true,
     },
     ignoreItemTypes = {
-		["Weapon"] = false,
+        ["Weapon"] = false,
         ["Armor"] = false,
-		["Consumable"] = true,
-		["Miscellaneous"] = false,
+        ["Consumable"] = true,
+        ["Miscellaneous"] = false,
         ["Quest"] = true,
         ["Recipe"] = true,
     },
-	ignoreTradeGoodsTypes = {
-		["Cloth"] = true,
-		["Leather"] = true,
-		["Metal"] = true,
-		["Stone"] = true,
-		["Gem"] = true,
-		["Meat"] = true,
-		["Herb"] = true,
-		["Elemental"] = true,
-		["Enchanting"] = true,
-		["Jewelcrafting"] = true,
-		["Inscription"] = true, 
-		["Parts"] = true,
-		["Other"] = true,
-	},
-	alawaysignore = {
-		["Containers"] = true,
-		["Container"] = true,
+    ignoreTradeGoodsTypes = {
+        ["Cloth"] = true,
+        ["Leather"] = true,
+        ["Metal"] = true,
+        ["Stone"] = true,
+        ["Gem"] = true,
+        ["Meat"] = true,
+        ["Herb"] = true,
+        ["Elemental"] = true,
+        ["Enchanting"] = true,
+        ["Jewelcrafting"] = true,
+        ["Inscription"] = true, 
+        ["Parts"] = true,
+        ["Other"] = true,
+    },
+    alwaysignore = {
+        ["Containers"] = true,
+        ["Container"] = true,
         ["Currency"] = true,
         ["Keys"] = true,
-		["Glyphs"] = true,
-		["Quivers"] = true,
-		["Projectile"] = true,
+        ["Glyphs"] = true,
+        ["Quivers"] = true,
+        ["Projectile"] = true,
     },
     minItemValue = 0.25,
     autoSellAtVendor = false,
     showSellListAtVendor = false,
-	autoOpenOnLowSpace = false,
-	ignoreGearValue = false,
-    freeSlotsThreshold = 3,
-	autoDeleteEnabled = false,
-	toggleIconPosition = nil,
-	deletionLogEnabled = true,
+    autoOpenOnLowSpace = false,
+    ignoreGearValue = false,
+    freeSlotsThreshold = 1,
+    autoDeleteEnabled = false,
+    toggleIconPosition = nil,
+    deletionLogEnabled = true,
 }
 
 -- Initialize frame positions table
@@ -67,8 +108,8 @@ IM.framePositions = {
     main = nil,
     sellList = nil,
     ignoredList = nil,
-	autoDeleteList = nil,
-	simpleSettings = nil
+    autoDeleteList = nil,
+    simpleSettings = nil
 }
 
 -- Quality data
@@ -147,10 +188,6 @@ local gearSlots = {
 
 IM.pendingItems = {}
 IM.pendingItemsProcessed = {}
-IM.vendorList = {}
-IM.ignoredItems = {}
-IM.autoDeleteList = {}
-IM_AutoDeleteListDB = IM.autoDeleteList
 
 -- Utility functions
 function IM:ScheduleCleanup()
@@ -167,22 +204,29 @@ function IM:ScheduleCleanup()
     end
 end
 
+function IM:ScheduleRefresh()
+    if not self.refreshTimer then
+        self.refreshTimer = CreateFrame("Frame")
+        self.refreshTimer:SetScript("OnUpdate", function(f, elapsed)
+            f.elapsed = (f.elapsed or 0) + elapsed
+            if f.elapsed >= 0.2 then
+                f:SetScript("OnUpdate", nil)
+                f.elapsed = 0
+                IM:RefreshUI()
+            end
+        end)
+    end
+end
+
 function IM:IsValidItemData(itemData)
     if not itemData then
         return false
     end
     
-    -- Check for required fields
-    if not itemData.itemID or type(itemData.itemID) ~= "number" then
+    if not itemData.itemID or type(itemData.itemID) ~= "number" or itemData.itemID <= 0 then
         return false
     end
     
-    -- Basic sanity checks
-    if itemData.itemID <= 0 then
-        return false
-    end
-    
-    -- Ensure we have at least some display information
     if not itemData.name and not itemData.displayName then
         return false
     end
@@ -191,28 +235,18 @@ function IM:IsValidItemData(itemData)
 end
 
 function IM:ValidateAutoDeleteList()
-    if not self.autoDeleteList then 
-        self.autoDeleteList = {}
-        return 0
-    end
-    
-    local validCount = 0
+    self:InitDB()
     local removedCount = 0
-    
-    for i = #self.autoDeleteList, 1, -1 do
-        local item = self.autoDeleteList[i]
-        
-        if self:IsValidItemData(item) then
-            validCount = validCount + 1
-        else
-            table.remove(self.autoDeleteList, i)
+    for itemID, item in pairs(self.db.autoDeleteList) do
+        if not self:IsValidItemData(item) then
+            self.db.autoDeleteList[itemID] = nil
             removedCount = removedCount + 1
         end
     end
     
     if removedCount > 0 then
         print(string.format("Inventory Manager: Removed %d invalid entries from auto-delete list", removedCount))
-        self:SaveAutoDeleteList()
+        self:SaveConfig()
     end
     
     return removedCount
@@ -220,30 +254,26 @@ end
 
 -- Export/Import functions for Auto-Delete list
 function IM:ExportAutoDeleteList()
-    if not self.autoDeleteList or #self.autoDeleteList == 0 then
+    self:InitDB()
+    if next(self.db.autoDeleteList) == nil then
         print("Inventory Manager: Auto-delete list is empty, nothing to export.")
         return
     end
     
-    -- Create export data structure
     local exportData = {
         version = 1,
         timestamp = time(),
         items = {}
     }
     
-    -- Add items to export data
-    for _, item in ipairs(self.autoDeleteList) do
+    for _, item in pairs(self.db.autoDeleteList) do
         table.insert(exportData.items, {
             itemID = item.itemID,
-            name = item.name,
+            name = item.name or item.displayName or "Unknown Item",
         })
     end
     
-    -- Convert to JSON-like string (simplified for WoW)
     local exportString = "IM_AutoDelete_Export:" .. self:TableToString(exportData)
-    
-    -- Show export frame instead of trying to copy to clipboard
     self:ShowExportFrame(exportString, "Auto-Delete List Export")
 end
 
@@ -252,22 +282,64 @@ function IM:ShowExportFrame(text, title)
         self:CreateExportFrame()
     end
     
-    -- Store the original text and set it
     IM_ExportFrame.exportText.originalText = text
     IM_ExportFrame.exportText:SetText(text)
-    IM_ExportFrame.exportText:SetCursorPosition(0) -- Scroll to top
+    IM_ExportFrame.exportText:SetCursorPosition(0)
     
     if title then
         IM_ExportFrame.title:SetText(title)
     end
     
-    -- Auto-select all text
     IM_ExportFrame.exportText:HighlightText()
     IM_ExportFrame.exportText:SetFocus()
     
     IM_ExportFrame:Show()
-    
     print("Inventory Manager: Export window opened. Press Ctrl+C to copy the text.")
+end
+
+function IM:CreateExportFrame()
+    if IM_ExportFrame then return IM_ExportFrame end
+    
+    local frame = CreateFrame("Frame", "IM_ExportFrame", UIParent)
+    frame:SetSize(500, 350)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    
+    frame.bg = frame:CreateTexture(nil, "BACKGROUND")
+    frame.bg:SetAllPoints(true)
+    frame.bg:SetTexture(0, 0, 0, 0.9)
+    
+    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    frame.title:SetPoint("TOP", 0, -10)
+    frame.title:SetText("Export Auto-Delete List")
+    
+    frame.closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    frame.closeBtn:SetPoint("TOPRIGHT", -5, -5)
+    
+    frame.scroll = CreateFrame("ScrollFrame", "IM_ExportScroll", frame, "UIPanelScrollFrameTemplate")
+    frame.scroll:SetPoint("TOPLEFT", 15, -40)
+    frame.scroll:SetPoint("BOTTOMRIGHT", -35, 45)
+    
+    frame.exportText = CreateFrame("EditBox", nil, frame.scroll)
+    frame.exportText:SetMultiLine(true)
+    frame.exportText:SetFontObject("GameFontHighlight")
+    frame.exportText:SetWidth(440)
+    frame.exportText:SetHeight(200)
+    frame.exportText:SetScript("OnEscapePressed", function() frame:Hide() end)
+    frame.scroll:SetScrollChild(frame.exportText)
+    
+    local closeBottomBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    closeBottomBtn:SetSize(90, 22)
+    closeBottomBtn:SetPoint("BOTTOM", 0, 12)
+    closeBottomBtn:SetText("Close")
+    closeBottomBtn:SetScript("OnClick", function() frame:Hide() end)
+    
+    IM_ExportFrame = frame
+    return frame
 end
 
 function IM:ImportAutoDeleteList(importString)
@@ -276,14 +348,12 @@ function IM:ImportAutoDeleteList(importString)
         return false
     end
     
-    -- Check if it's our export format
     if not strfind(importString, "IM_AutoDelete_Export:") then
         self:ShowImportMessage("Invalid import format. Please use a valid export string.", true)
         return false
     end
     
-    -- Extract the data part
-    local dataString = strsub(importString, 21) -- Remove "IM_AutoDelete_Export:"
+    local dataString = strsub(importString, 21)
     local success, importData = pcall(self.StringToTable, self, dataString)
     
     if not success or not importData or not importData.items then
@@ -291,32 +361,19 @@ function IM:ImportAutoDeleteList(importString)
         return false
     end
     
+    self:InitDB()
     local importedCount = 0
     local skippedCount = 0
     
-    -- Import items
     for _, itemData in ipairs(importData.items) do
         if itemData.itemID then
-            -- Check if item already exists in auto-delete list
-            local exists = false
-            for _, existingItem in ipairs(self.autoDeleteList) do
-                if existingItem.itemID == itemData.itemID then
-                    exists = true
-                    break
-                end
-            end
-            
-            if not exists then
-                -- Add to auto-delete list
-                local itemInfo = {
+            if not self.db.autoDeleteList[itemData.itemID] then
+                self.db.autoDeleteList[itemData.itemID] = {
                     itemID = itemData.itemID,
                     name = itemData.name or "Unknown Item",
-                    displayName = itemData.name or "Unknown Item",
-                    quality = 1, -- Default quality
-                    link = "item:" .. itemData.itemID -- Basic item link
+                    quality = 1,
+                    texture = "Interface\\Icons\\INV_Misc_QuestionMark"
                 }
-                
-                table.insert(self.autoDeleteList, itemInfo)
                 importedCount = importedCount + 1
             else
                 skippedCount = skippedCount + 1
@@ -324,13 +381,10 @@ function IM:ImportAutoDeleteList(importString)
         end
     end
     
-    -- Save the updated list
-    self:SaveAutoDeleteList()
-    
-    -- Refresh UI
+    self:SaveConfig()
     self:RefreshUI()
-    if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
-        self:UpdateAutoDeleteListFrame()
+    if IM_AutoListFrame and IM_AutoListFrame:IsShown() then
+        IM:UpdateAutoListFrame()
     end
     
     local message = string.format("Successfully imported %d items", importedCount)
@@ -347,18 +401,16 @@ function IM:ShowImportMessage(message, isError)
     local color = isError and "|cFFFF0000" or "|cFF00FF00"
     print("Inventory Manager: " .. color .. message .. "|r")
     
-    -- You could also show this in the import frame itself if you want
     if IM_ImportFrame and IM_ImportFrame.infoText then
         IM_ImportFrame.infoText:SetText(message)
         if isError then
-            IM_ImportFrame.infoText:SetTextColor(1, 0.5, 0.5) -- Reddish for errors
+            IM_ImportFrame.infoText:SetTextColor(1, 0.5, 0.5)
         else
-            IM_ImportFrame.infoText:SetTextColor(0.5, 1, 0.5) -- Greenish for success
+            IM_ImportFrame.infoText:SetTextColor(0.5, 1, 0.5)
         end
     end
 end
 
--- Replace the ShowImportAutoDeleteDialog function with a frame-based approach
 function IM:ShowImportAutoDeleteDialog()
     if not IM_ImportFrame then
         self:CreateImportFrame()
@@ -372,83 +424,47 @@ function IM:ShowImportAutoDeleteDialog()
 end
 
 function IM:CreateImportFrame()
-    if IM_ImportFrame then
-        return IM_ImportFrame
-    end
+    if IM_ImportFrame then return IM_ImportFrame end
     
     local frame = CreateFrame("Frame", "IM_ImportFrame", UIParent)
     frame:SetSize(500, 400)
     frame:SetPoint("CENTER", 0, 0)
-    
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-    end)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     
-    -- Background
     frame.bg = frame:CreateTexture(nil, "BACKGROUND")
     frame.bg:SetAllPoints(true)
     frame.bg:SetTexture(0, 0, 0, 0.9)
     
-    -- Border
-    frame.border = CreateFrame("Frame", nil, frame)
-    frame.border:SetPoint("TOPLEFT", -3, 3)
-    frame.border:SetPoint("BOTTOMRIGHT", 3, -3)
-    frame.border:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-    frame.border:SetBackdropColor(0, 0, 0, 0.8)
-    frame.border:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
-    
-    -- Title
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     frame.title:SetPoint("TOP", 0, -8)
     frame.title:SetText("Import Auto-Delete List")
     
-    -- Close button
     frame.closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     frame.closeBtn:SetSize(32, 32)
     frame.closeBtn:SetPoint("TOPRIGHT", -5, -5)
     frame.closeBtn:SetScript("OnClick", function() frame:Hide() end)
     
-    -- Instructions
     frame.instructions = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.instructions:SetPoint("TOP", 0, -30)
     frame.instructions:SetText("Paste your auto-delete list export string below:")
     
-    -- Scroll frame for import text
     frame.scroll = CreateFrame("ScrollFrame", "IM_ImportScroll", frame, "UIPanelScrollFrameTemplate")
     frame.scroll:SetPoint("TOPLEFT", 10, -55)
-    frame.scroll:SetPoint("BOTTOMRIGHT", -32, 80) -- More space for buttons
+    frame.scroll:SetPoint("BOTTOMRIGHT", -32, 80)
     
-    -- Edit box for text
     frame.importText = CreateFrame("EditBox", nil, frame.scroll)
     frame.importText:SetMultiLine(true)
     frame.importText:SetFontObject("GameFontHighlight")
-    frame.importText:SetWidth(frame.scroll:GetWidth() - 20)
+    frame.importText:SetWidth(440)
     frame.importText:SetHeight(200)
     frame.importText:SetAutoFocus(true)
-    frame.importText:SetTextInsets(5, 5, 5, 5)
-    frame.importText:EnableMouse(true)
     frame.importText:SetScript("OnEscapePressed", function() frame:Hide() end)
-    
     frame.scroll:SetScrollChild(frame.importText)
     
-    -- Position the scroll bar properly
-    local scrollBar = _G["IM_ImportScrollScrollBar"]
-    if scrollBar then
-        scrollBar:ClearAllPoints()
-        scrollBar:SetPoint("TOPLEFT", frame.scroll, "TOPRIGHT", 0, -16)
-        scrollBar:SetPoint("BOTTOMLEFT", frame.scroll, "BOTTOMRIGHT", 0, 16)
-    end
-    
-    -- Import button
     frame.importBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     frame.importBtn:SetSize(100, 25)
     frame.importBtn:SetPoint("BOTTOMLEFT", 10, 10)
@@ -460,7 +476,6 @@ function IM:CreateImportFrame()
         end
     end)
     
-    -- Clear button
     frame.clearBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     frame.clearBtn:SetSize(80, 25)
     frame.clearBtn:SetPoint("BOTTOM", 0, 10)
@@ -470,14 +485,12 @@ function IM:CreateImportFrame()
         frame.importText:SetFocus()
     end)
     
-    -- Close button at bottom
     frame.closeBottomBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     frame.closeBottomBtn:SetSize(80, 25)
     frame.closeBottomBtn:SetPoint("BOTTOMRIGHT", -10, 10)
-    frame.closeBottomBtn:SetText("Close")
-    frame.closeBottomBtn:SetScript("OnClick", function() frame:Hide() end)
+    closeBottomBtn:SetText("Close")
+    closeBottomBtn:SetScript("OnClick", function() frame:Hide() end)
     
-    -- Info text
     frame.infoText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.infoText:SetPoint("BOTTOM", 0, 35)
     frame.infoText:SetText("Paste your export string and click Import")
@@ -487,23 +500,15 @@ function IM:CreateImportFrame()
     return frame
 end
 
--- Utility function to convert table to string (simplified serialization)
 function IM:TableToString(tbl)
     local parts = {}
-    
-    if tbl.version then
-        table.insert(parts, "v=" .. tbl.version)
-    end
-    
-    if tbl.timestamp then
-        table.insert(parts, "t=" .. tbl.timestamp)
-    end
+    if tbl.version then table.insert(parts, "v=" .. tbl.version) end
+    if tbl.timestamp then table.insert(parts, "t=" .. tbl.timestamp) end
     
     if tbl.items then
         local itemParts = {}
         for _, item in ipairs(tbl.items) do
             if item.itemID then
-                -- Escape colons in names
                 local escapedName = string.gsub(item.name or "", ":", "\\:")
                 table.insert(itemParts, item.itemID .. ":" .. escapedName)
             end
@@ -514,7 +519,6 @@ function IM:TableToString(tbl)
     return table.concat(parts, "|")
 end
 
--- Utility function to convert string back to table
 function IM:StringToTable(str)
     local tbl = {}
     local parts = {strsplit("|", str)}
@@ -532,7 +536,6 @@ function IM:StringToTable(str)
                 for _, itemStr in ipairs(itemParts) do
                     local itemID, name = strsplit(":", itemStr, 2)
                     if itemID then
-                        -- Unescape colons in names
                         local unescapedName = string.gsub(name or "", "\\:", ":")
                         table.insert(tbl.items, {
                             itemID = tonumber(itemID),
@@ -545,17 +548,6 @@ function IM:StringToTable(str)
     end
     
     return tbl
-end
-
--- Clipboard function for WoW 3.3.5 compatibility
-function IM:SetClipboard(text)
-    -- Try to use modern method first (if available in your WoW version)
-    if C_ChatInfo and C_ChatInfo.SetClipboardText then
-        return C_ChatInfo.SetClipboardText(text)
-    end
-    
-    -- Fallback for older clients - just return true and let user copy manually
-    return true
 end
 
 function IM:CopyTable(orig)
@@ -574,16 +566,14 @@ end
 
 function IM:CleanupPendingItems()
     local now = GetTime()
-    local cleanupThreshold = 300 -- 5 minutes
+    local cleanupThreshold = 300
     
-    -- Clean up old processed items
     for itemID, timestamp in pairs(self.pendingItemsProcessed) do
         if now - timestamp > cleanupThreshold then
             self.pendingItemsProcessed[itemID] = nil
         end
     end
     
-    -- Clean up pending items list
     local stillPending = {}
     for _, itemData in ipairs(self.pendingItems) do
         if now - (itemData.addedTime or 0) < cleanupThreshold then
@@ -594,17 +584,8 @@ function IM:CleanupPendingItems()
 end
 
 function IM:CleanupAutoDeleteList()
-    if not self.autoDeleteList then return end
-    
-    local initialCount = #self.autoDeleteList
+    self:InitDB()
     self:ValidateAutoDeleteList()
-    local finalCount = #self.autoDeleteList
-    
-    if initialCount ~= finalCount then
-        print(string.format("Inventory Manager: Cleaned auto-delete list (%d invalid entries removed)", 
-              initialCount - finalCount))
-        self:SaveAutoDeleteList()
-    end
 end
 
 function IM:GetQualityKey(quality)
@@ -622,73 +603,49 @@ end
 
 function IM:GetTradeGoodsCategory(subType, itemName)
     local categoryMap = {
-        -- Cloth
         ["Cloth"] = "Cloth",
         ["Bolt of Cloth"] = "Cloth",
-        
-        -- Leather
         ["Leather"] = "Leather",
         ["Hide"] = "Leather",
         ["Scale"] = "Leather",
-        
-        -- Metal
         ["Ore"] = "Metal",
         ["Bar"] = "Metal",
         ["Metal"] = "Metal",
-        
-        -- Stone
         ["Stone"] = "Stone",
-        
-        -- Meat
         ["Meat"] = "Meat",
         ["Mutton"] = "Meat",
         ["Pork"] = "Meat",
         ["Beef"] = "Meat",
         ["Chicken"] = "Meat",
-        
-        -- Herbs
         ["Herb"] = "Herb",
         ["Flower"] = "Herb",
-        
-        -- Elemental
         ["Elemental"] = "Elemental",
         ["Fire"] = "Elemental",
         ["Water"] = "Elemental",
         ["Air"] = "Elemental",
         ["Earth"] = "Elemental",
-        
-        -- Enchanting
         ["Enchanting"] = "Enchanting",
         ["Dust"] = "Enchanting",
         ["Essence"] = "Enchanting",
         ["Shard"] = "Enchanting",
-        
-        -- Jewelcrafting
         ["Jewelcrafting"] = "Jewelcrafting",
         ["Gem"] = "Jewelcrafting",
-        
-        -- Inscription
         ["Inscription"] = "Inscription",
         ["Pigment"] = "Inscription",
         ["Ink"] = "Inscription",
         ["Scroll"] = "Inscription",
         ["Glyph"] = "Inscription",
         ["Item Enhancement"] = "Inscription",
-        
-        -- Parts
         ["Parts"] = "Parts",
         ["Explosives"] = "Parts",
         ["Devices"] = "Parts",
     }
     
-    -- Special handling for "Metal & Stone" - check the item name
     if subType == "Metal & Stone" then
         if itemName then
             local lowerName = itemName:lower()
-            -- Stone items
             if string.find(lowerName, "stone") or string.find(lowerName, "rock") or string.find(lowerName, "pebble") then
                 return "Stone"
-            -- Metal items (ores, bars, etc.)
             elseif string.find(lowerName, "ore") or string.find(lowerName, "bar") or string.find(lowerName, "ingot") or 
                    string.find(lowerName, "copper") or string.find(lowerName, "tin") or string.find(lowerName, "iron") or
                    string.find(lowerName, "mithril") or string.find(lowerName, "thorium") or string.find(lowerName, "fel iron") or
@@ -696,11 +653,9 @@ function IM:GetTradeGoodsCategory(subType, itemName)
                 return "Metal"
             end
         end
-        -- Default to Stone for ambiguous "Metal & Stone" items
         return "Stone"
     end
     
-    -- For "Other" subType, we need to check the item name to categorize properly
     if subType == "Other" then
         return "Other"
     end
@@ -730,7 +685,6 @@ function IM:SaveDeletionLog()
         self:StartNewSession()
     end
     
-    -- Save to global variable
     IM_DeletionLogDB = self.deletionLog
 end
 
@@ -755,7 +709,7 @@ end
 
 function IM:CleanupOldSessions()
     local now = time()
-    local oneMonthAgo = now - (30 * 24 * 60 * 60) -- 30 days in seconds
+    local oneMonthAgo = now - (30 * 24 * 60 * 60)
     
     for sessionId, sessionData in pairs(self.deletionLog.sessions) do
         if sessionData.startTime < oneMonthAgo then
@@ -769,19 +723,16 @@ end
 function IM:LogDeletion(itemLink, itemCount, deletionType)
     if not self.db.deletionLogEnabled then return end
     
-    -- Ensure deletion log is initialized
     if not self.deletionLog then
-        self:InitializeDeletionLog()
-        return
+        self.deletionLog = { sessions = {}, allTime = {}, lastCleanup = time() }
+        self:StartNewSession()
     end
     
     local itemID = self:GetItemIDFromLink(itemLink)
     if not itemID then 
-        print("Inventory Manager: Cannot log deletion - invalid item link: " .. (itemLink or "nil"))
         return 
     end
     
-    -- Ensure we have valid data
     if not itemCount or itemCount < 1 then
         itemCount = 1
     end
@@ -793,17 +744,15 @@ function IM:LogDeletion(itemLink, itemCount, deletionType)
         itemCount = itemCount,
         deletionType = deletionType or "manual"
     }
-    -- Add to current session
+    
     local currentSession = self.deletionLog.sessions[self.deletionLog.currentSession]
     if currentSession then
-        -- Check if we already have this item in the current session and combine if found
         local foundExisting = false
-        for i, existingDeletion in ipairs(currentSession.deletions) do
+        for _, existingDeletion in ipairs(currentSession.deletions) do
             if existingDeletion.itemID == itemID and existingDeletion.deletionType == deletionType then
-                -- Combine with existing entry (within a reasonable time window - 5 minutes)
                 if deletionEntry.timestamp - existingDeletion.timestamp < 300 then
                     existingDeletion.itemCount = existingDeletion.itemCount + itemCount
-                    existingDeletion.timestamp = deletionEntry.timestamp -- Update to most recent time
+                    existingDeletion.timestamp = deletionEntry.timestamp
                     foundExisting = true
                     break
                 end
@@ -815,19 +764,16 @@ function IM:LogDeletion(itemLink, itemCount, deletionType)
         end
     end
     
-    -- Also add to all-time log
     if not self.deletionLog.allTime then
         self.deletionLog.allTime = {}
     end
     
-    -- Check if we already have this item in the all-time log and combine if found
     local foundExistingAllTime = false
-    for i, existingDeletion in ipairs(self.deletionLog.allTime) do
+    for _, existingDeletion in ipairs(self.deletionLog.allTime) do
         if existingDeletion.itemID == itemID and existingDeletion.deletionType == deletionType then
-            -- Combine with existing entry (within a reasonable time window - 5 minutes)
             if deletionEntry.timestamp - existingDeletion.timestamp < 300 then
                 existingDeletion.itemCount = existingDeletion.itemCount + itemCount
-                existingDeletion.timestamp = deletionEntry.timestamp -- Update to most recent time
+                existingDeletion.timestamp = deletionEntry.timestamp
                 foundExistingAllTime = true
                 break
             end
@@ -841,48 +787,8 @@ function IM:LogDeletion(itemLink, itemCount, deletionType)
     self:SaveDeletionLog()
 end
 
-function IM:GetDeletionsForTimeRange(hours)
-    -- Define proper time ranges for each tab
-    local cutoffTime
-    if hours == 0 then
-        -- Session tab = last 12 hours
-        cutoffTime = time() - (12 * 60 * 60)
-    else
-        -- Other tabs use their specified hours
-        cutoffTime = time() - (hours * 60 * 60)
-    end
-    
-    local results = {}
-    
-    -- Filter deletions from all sessions by time
-    for _, sessionData in pairs(self.deletionLog.sessions) do
-        for _, deletion in ipairs(sessionData.deletions) do
-            -- Additional safety check for valid deletion entries
-            if deletion and deletion.timestamp and deletion.timestamp >= cutoffTime then
-                table.insert(results, deletion)
-            end
-        end
-    end
-    
-    return results
-end
-
-function IM:FormatDeletionTime(timestamp)
-    local now = time()
-    local diff = now - timestamp
-    
-    if diff < 60 then
-        return string.format("%d seconds ago", diff)
-    elseif diff < 3600 then
-        return string.format("%d minutes ago", math.floor(diff / 60))
-    elseif diff < 86400 then
-        return string.format("%d hours ago", math.floor(diff / 3600))
-    else
-        return string.format("%d days ago", math.floor(diff / 86400))
-    end
-end
-
 function IM:CheckBagSpaceAndOpen()
+    self:InitDB()
     if not self.db.autoOpenOnLowSpace then
         return
     end
@@ -902,8 +808,9 @@ function IM:CheckBagSpaceAndOpen()
     end
     
     local freeSlots = totalBagSlots - usedBagSlots
-    if freeSlots <= self.db.freeSlotsThreshold then
-        if not (IM_MainFrame and IM_MainFrame:IsShown()) and not MerchantFrame:IsShown() then
+    if freeSlots <= (self.db.freeSlotsThreshold or 1) then
+        local merchantShowing = MerchantFrame and MerchantFrame:IsShown()
+        if not (IM_MainFrame and IM_MainFrame:IsShown()) and not merchantShowing then
             self:CreateFrames()
             self:ShowSuggestions()
             print(string.format("Inventory Manager: Auto-opened (only %d free slots)", freeSlots))
@@ -912,25 +819,20 @@ function IM:CheckBagSpaceAndOpen()
 end
 
 function IM:RefreshUI()
-    -- Only refresh if the main frame is visible
     if IM_MainFrame and IM_MainFrame:IsShown() then
         self:ShowSuggestions()
     end
 
-    -- Refresh sell list frame if visible
     if IM_SellListFrame and IM_SellListFrame:IsShown() then
-        local filterMode = IM_SellListFrame.filterMode or false
-        self:UpdateSellListFrame(filterMode)
+        self:UpdateSellListFrame()
     end
 
-    -- Refresh ignored list frame if visible
     if IM_IgnoredListFrame and IM_IgnoredListFrame:IsShown() then
         self:UpdateIgnoredListFrame()
     end
 
-    -- Refresh auto-delete list frame if visible
-    if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
-        self:UpdateAutoDeleteListFrame()
+    if IM_AutoListFrame and IM_AutoListFrame:IsShown() then
+        self:UpdateAutoListFrame()
     end
 end
 
@@ -956,7 +858,7 @@ end
 
 function IM:GetItemIDFromLink(link)
     if not link then return nil end
-    local itemID = string.match(link, "item:(%d+):")
+    local itemID = string.match(link, "item:(%d+):") or string.match(link, "item:(%d+)")
     return itemID and tonumber(itemID) or nil
 end
 
@@ -964,11 +866,9 @@ function IM:GetItemLocations(itemID)
     local locations = {}
     local totalCount = 0
     local stackValue = 0
-    local sellPrice = 0
 
-    -- Get sell price from item info
     local _, _, _, _, _, _, _, _, _, _, price = GetItemInfo(itemID)
-    sellPrice = price or 0
+    local sellPrice = price or 0
 
     for bag = 0, 4 do
         local slots = GetContainerNumSlots(bag)
@@ -990,6 +890,8 @@ end
 
 function IM:ScanInventory()
     self:CleanupPendingItems()
+    self:InitDB()
+
     local suggestions = {}
     local totalBagSlots = 0
     local usedBagSlots = 0
@@ -998,24 +900,7 @@ function IM:ScanInventory()
     local _, playerClass = UnitClass("player")
     local itemsByID = {}
     
-    -- Clear pending items at start of scan
     self.pendingItems = {}
-    
-    -- Build lookup tables for faster checking
-    local vendorListLookup = {}
-    for _, vendorItem in ipairs(self.vendorList) do
-        vendorListLookup[vendorItem.itemID] = true
-    end
-    
-    local ignoredListLookup = {}
-    for _, ignoredItem in ipairs(self.ignoredItems) do
-        ignoredListLookup[ignoredItem.itemID] = true
-    end
-    
-    local autoDeleteListLookup = {}
-    for _, autoDeleteItem in ipairs(self.autoDeleteList) do
-        autoDeleteListLookup[autoDeleteItem.itemID] = true
-    end
     
     for bag = 0, 4 do
         local slots = GetContainerNumSlots(bag)
@@ -1026,15 +911,11 @@ function IM:ScanInventory()
                 usedBagSlots = usedBagSlots + 1
                 local itemID = self:GetItemIDFromLink(link)
                 
-                if not itemID then
-                    -- Try to extract itemID from link if GetItemIDFromLink failed
-                    itemID = string.match(link, "item:(%d+):") or string.match(link, "item:(%d+)")
-                    if itemID then itemID = tonumber(itemID) end
-                end
-                
                 if itemID then
-                    -- Check if item is in ANY list (vendor, ignored, or auto-delete)
-                    local isInAnyList = vendorListLookup[itemID] or ignoredListLookup[itemID] or autoDeleteListLookup[itemID]
+                    -- Direct map lookup for items in Sell, Ignore, or Auto lists
+                    local isInAnyList = self.db.vendorList[itemID] 
+                                     or self.db.ignoredItems[itemID] 
+                                     or self.db.autoDeleteList[itemID]
                     
                     if not isInAnyList then
                         local itemInfo = self:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, playerLevel, playerClass)
@@ -1066,7 +947,6 @@ function IM:ScanInventory()
                                 itemsByID[itemID].reason = itemInfo.reason
                             end
                         elseif not itemInfo then
-                            -- Item data not available yet, add to pending list
                             table.insert(self.pendingItems, {bag = bag, slot = slot, itemID = itemID, link = link})
                         end
                     end
@@ -1079,11 +959,13 @@ function IM:ScanInventory()
         table.insert(suggestions, itemInfo)
     end
     
-    table.sort(suggestions, function(a, b) 
-        if a.priority == b.priority then
-            return a.stackValue < b.stackValue
+    table.sort(suggestions, function(a, b)
+        local priceA = a.sellPrice or 0
+        local priceB = b.sellPrice or 0
+        if priceA == priceB then
+            return (a.name or "") < (b.name or "")
         end
-        return a.priority < b.priority
+        return priceA < priceB
     end)
     
     return suggestions, totalBagSlots, usedBagSlots
@@ -1093,15 +975,13 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
     local itemName, itemLink, itemRarity, itemLevel, itemMinLevel, itemType, itemSubType, 
           itemStackCount, itemEquipLoc, itemTexture, itemSellPrice = GetItemInfo(itemID or link)
     
-    -- Use link data as fallback when full item info isn't available
     local usingFallbackData = false
     if not itemName or not itemType or itemType == "" then
         usingFallbackData = true
-        itemName = string.match(link, "%[(.-)%]") or "Unknown Item"
+        itemName = string.match(link or "", "%[(.-)%]") or "Unknown Item"
         itemType = itemType or "Unknown"
         itemSubType = itemSubType or "Unknown"
         
-        -- Mark for reprocessing but don't skip analysis entirely
         if itemID and not self.pendingItemsProcessed[itemID] then
             table.insert(self.pendingItems, {
                 bag = bag, 
@@ -1137,96 +1017,43 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         priority = 0,
         reason = "",
         stackSize = itemStackCount or 1,
-        displayName = string.match(link, "%[(.-)%]") or itemName,
-        usingFallbackData = usingFallbackData  -- Track if we're using incomplete data
+        displayName = string.match(link or "", "%[(.-)%]") or itemName,
+        usingFallbackData = usingFallbackData
     }
     
-    -- If we're using fallback data, be more conservative with deletions
     if usingFallbackData then
         itemInfo.shouldSuggestDelete = false
         itemInfo.reason = "Incomplete item data - waiting for full info"
         return itemInfo
     end
 	
-	if actualQuality >= 3 then
-		return nil
-	end
+    if actualQuality >= 3 then
+        return nil
+    end
 	
-    -- Never suggest deleting these important items, regardless of type
     local importantItems = {
-        "Hearthstone",
-        "Astral Recall",
-        "Innkeeper's Daughter",
-        "Insignia of the",
-        "Medallion of the",
-        "Battlemaster's",
-        "Gladiator's",
-        "Key to",
-        "Key of",
-        "Skeleton Key",
-        "Mining Pick",
-        "Skinning Knife",
-        "Blacksmith Hammer",
-        "Runed Copper Rod",
-        "Arclight Spanner",
-        "Fishing Pole",
-        "Aquadynamic Fish",
-        "Bright Baubles",
-        "Shiny Baubles",
-        "Soul Shard",
-        "Ankh",
-        "Symbol of",
-        "Rune of",
-        "Totem of",
-        "Libram of",
-        "Idol of",
-        "Sigil of",
-        "Argent Dawn Commission",
-        "Seal of Ascension",
-        "Scepter of Celebras",
-        "Mallet of Zul'Farrak",
-        "Staff of Escorte",
-        "Attuned Crystal",
-        "The Master's Key",
-        "Key to the Focusing Iris",
-        "Heroic Key",
-        "Dragon Eye",
-        "Scarab",
-        "Scepter of the Shifting Sands",
-        "Gnomish Army Knife",
-        "Goblin Rocket Boots",
-        "Jeeves",
-        "MOLL-E",
-        "Wormhole Generator",
-        "Blingtron",
-        "Elixir of Giant Growth",
-        "Noggenfogger Elixir",
-        "Savory Deviate Delight",
-        "Gnomish Mind Control Cap",
-        "Piccolo of the Flaming Fire",
-        "World Enlarger",
-        "Time-Lost Figurine",
-        "Orb of Deception",
-        "Badge of Justice",
-        "Emblem of",
-        "Honor Points",
-        "Arena Points",
-        "Guild Charter",
+        "Hearthstone", "Astral Recall", "Innkeeper's Daughter", "Insignia of the", "Medallion of the",
+        "Battlemaster's", "Gladiator's", "Key to", "Key of", "Skeleton Key", "Mining Pick", "Skinning Knife",
+        "Blacksmith Hammer", "Runed Copper Rod", "Arclight Spanner", "Fishing Pole", "Aquadynamic Fish",
+        "Bright Baubles", "Shiny Baubles", "Soul Shard", "Ankh", "Symbol of", "Rune of", "Totem of",
+        "Libram of", "Idol of", "Sigil of", "Argent Dawn Commission", "Seal of Ascension", "Scepter of Celebras",
+        "Mallet of Zul'Farrak", "Staff of Escorte", "Attuned Crystal", "The Master's Key", "Key to the Focusing Iris",
+        "Heroic Key", "Dragon Eye", "Scarab", "Scepter of the Shifting Sands", "Gnomish Army Knife",
+        "Goblin Rocket Boots", "Jeeves", "MOLL-E", "Wormhole Generator", "Blingtron", "Elixir of Giant Growth",
+        "Noggenfogger Elixir", "Savory Deviate Delight", "Gnomish Mind Control Cap", "Piccolo of the Flaming Fire",
+        "World Enlarger", "Time-Lost Figurine", "Orb of Deception", "Badge of Justice", "Emblem of",
+        "Honor Points", "Arena Points", "Guild Charter",
     }
     
-    -- Check if this is a consumable trade good (meat/fish that can be eaten)
     local isConsumableTradeGood = false
     if itemInfo.type == "Trade Goods" and (itemInfo.subType == "Meat" or itemInfo.subType == "Fish") then
-        -- Check if this item has a use effect (can be consumed)
         local hasUseEffect = false
-        
-        -- Try to determine if it's consumable by checking tooltip
         local tooltip = CreateFrame("GameTooltip", "IMTempTooltip", UIParent, "GameTooltipTemplate")
         tooltip:SetOwner(UIParent, "ANCHOR_NONE")
         tooltip:SetHyperlink(itemInfo.link or link)
         
-        for i = 2, 4 do  -- Check lines 2-4 for use effects
-            local text = _G["IMTempTooltipTextLeft"..i]:GetText()
+        for i = 2, 4 do
+            local text = _G["IMTempTooltipTextLeft"..i] and _G["IMTempTooltipTextLeft"..i]:GetText()
             if text and (string.find(text, "Use:") or string.find(text, "Restores") or string.find(text, "Consumable")) then
                 hasUseEffect = true
                 break
@@ -1237,41 +1064,34 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         
         if hasUseEffect then
             isConsumableTradeGood = true
-            itemInfo.type = "Consumable"  -- Reclassify as consumable
+            itemInfo.type = "Consumable"
         end
     end
 	
-    -- CHECK ITEM TYPE FILTERING FIRST
     if self.db.ignoreItemTypes[itemInfo.type] then
         return nil
     end
 	
-	if self.db.alawaysignore[itemInfo.type] then
-		return nil
-	end
+    if self.db.alwaysignore and self.db.alwaysignore[itemInfo.type] then
+        return nil
+    end
 	
-    -- Check if this is gear (has an equip location)
-	local isGear = gearSlots[itemEquipLoc]
-
+    local isGear = gearSlots[itemEquipLoc]
     local minItemValueCopper = (self.db.minItemValue or 0) * 10000
     local itemValueCopper = (itemInfo.sellPrice or 0)
 
-    -- Revised gear analysis with proper logic flow
     if isGear then
         local qualityKey = self:GetQualityKey(actualQuality)
         
-        -- First check if we should ignore based on quality
         if self.db.ignoreQuality[qualityKey] then
             return nil
         end
         
-        -- Then check gear value settings
         if self.db.ignoreGearValue then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 2
             itemInfo.reason = "Gear (value ignored)"
         else
-            -- Only suggest deletion if below value threshold
             if itemValueCopper < minItemValueCopper then
                 itemInfo.shouldSuggestDelete = true
                 itemInfo.priority = 2
@@ -1282,8 +1102,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         end
     end
 	
-    -- Grey quality items (non-gear)
-	if actualQuality == 0 and not isGear then
+    if actualQuality == 0 and not isGear then
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 1
@@ -1293,13 +1112,10 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         end
     end
 	
-    -- Trade goods analysis (now excludes consumable meat/fish)
     if itemInfo.type == "Trade Goods" and not isConsumableTradeGood then
         local tradeGoodsCategory = self:GetTradeGoodsCategory(itemInfo.subType, itemInfo.name)
         
-        -- Special handling for "Other" subType - check if it's actually an inscription item
         if itemInfo.subType == "Other" then
-            -- Check if this is an inscription-related item by name
             if itemInfo.name and (string.find(itemInfo.name:lower(), "pigment") or 
                                   string.find(itemInfo.name:lower(), "ink") or
                                   string.find(itemInfo.name:lower(), "scroll") or
@@ -1336,7 +1152,6 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         end
     end
     
-    -- Recipe analysis
     if itemInfo.type == "Recipe" then
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
@@ -1347,7 +1162,6 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         end
     end
     
-    -- Consumable analysis (now includes consumable meat/fish)
     if itemInfo.type == "Consumable" or isConsumableTradeGood then
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
@@ -1358,24 +1172,20 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         end
     end
 	
-	-- Miscellaneous analysis
     if itemInfo.type == "Miscellaneous" then
-    -- Only suggest deletion for poor (0) uality miscellaneous items
-    if actualQuality == 0 then
-        if itemValueCopper < minItemValueCopper then
-            itemInfo.shouldSuggestDelete = true
-            itemInfo.priority = 6
-            itemInfo.reason = "Low value Misc Item"
+        if actualQuality == 0 then
+            if itemValueCopper < minItemValueCopper then
+                itemInfo.shouldSuggestDelete = true
+                itemInfo.priority = 6
+                itemInfo.reason = "Low value Misc Item"
+            else
+                itemInfo.shouldSuggestDelete = false
+            end
         else
-            itemInfo.shouldSuggestDelete = false
+            return nil
         end
-    else
-        -- For higher quality misc items return nil to skip entirely
-        return nil
     end
-end
 	
-    -- Check against important items list
     for _, importantName in ipairs(importantItems) do
         if itemInfo.name and string.find(itemInfo.name, importantName) then
             itemInfo.shouldSuggestDelete = false
@@ -1384,9 +1194,7 @@ end
         end
     end
 
-    -- Catch-all for any item type not specifically handled above
     if not itemInfo.shouldSuggestDelete and itemInfo.type ~= "Quest" then
-        -- Check if this item is in the important items list
         local isImportantItem = false
         for _, importantName in ipairs(importantItems) do
             if itemInfo.name and string.find(itemInfo.name, importantName) then
@@ -1410,243 +1218,131 @@ end
     return itemInfo
 end
 
-function IM:SaveAutoDeleteList()
-    IM_AutoDeleteListDB = self.autoDeleteList
-end
-
-function IM:AddToAutoDeleteList(suggestion)
-    if not suggestion or not suggestion.itemID then
-        print("Inventory Manager: Cannot add invalid item to auto-delete list")
-        return false
-    end
-    
-    -- Ensure autoDeleteList exists
-    if not self.autoDeleteList then
-        self.autoDeleteList = {}
-    end
-    
-    -- Check if item already exists
-    local found = false
-    for i, autoDeleteItem in ipairs(self.autoDeleteList) do
-        if autoDeleteItem and autoDeleteItem.itemID == suggestion.itemID then
-            found = true
-            break
-        end
-    end
-    
-    if not found then
-        -- SAFER: Provide comprehensive fallbacks for all fields
-        local autoDeleteEntry = {
-            itemID = suggestion.itemID,
-            name = suggestion.name or "Unknown Item",
-            link = suggestion.link or ("item:" .. suggestion.itemID),
-            quality = suggestion.quality or 1,
-            displayName = suggestion.displayName or suggestion.name or "Unknown Item",
-            -- Add timestamp for tracking
-            addedTime = time()
+-- Persistent List Data Handlers
+function IM:AddToAutoDeleteList(item)
+    self:InitDB()
+    local itemID = type(item) == "table" and item.itemID or item
+    if itemID then
+        local name, _, quality, _, _, _, _, _, _, texture = GetItemInfo(itemID)
+        self.db.autoDeleteList[itemID] = {
+            itemID = itemID,
+            name = (type(item) == "table" and (item.displayName or item.name)) or name or ("Item #" .. itemID),
+            quality = (type(item) == "table" and item.quality) or quality or 1,
+            texture = (type(item) == "table" and item.texture) or texture or "Interface\\Icons\\INV_Misc_QuestionMark"
         }
-        
-        -- Validate the entry before adding
-        if self:IsValidItemData(autoDeleteEntry) then
-            table.insert(self.autoDeleteList, autoDeleteEntry)
-            self:RemoveFromVendorList(suggestion.itemID)
-            self:RemoveFromIgnoredList(suggestion.itemID)
-            self:SaveAutoDeleteList()
-            IM:RefreshUI()
-            return true
-        else
-            print("Inventory Manager: Failed to create valid auto-delete entry")
-            return false
-        end
+        self:RemoveFromVendorList(itemID)
+        self:RemoveFromIgnoredList(itemID)
+        self:SaveConfig()
+        self:RefreshUI()
     end
-    
-    return false
 end
 
 function IM:RemoveFromAutoDeleteList(itemID)
-    if not itemID then
-        print("Inventory Manager: Cannot remove item with nil itemID from auto-delete list")
-        return false
-    end
-    
-    if not self.autoDeleteList then
-        self.autoDeleteList = {}
-        return false
-    end
-    
-    local removed = false
-    for i = #self.autoDeleteList, 1, -1 do
-        local autoDeleteItem = self.autoDeleteList[i]
-        if autoDeleteItem and autoDeleteItem.itemID == itemID then
-            table.remove(self.autoDeleteList, i)
-            removed = true
-            break
-        end
-    end
-    
-    if removed then
-        self:SaveAutoDeleteList()
-        
-        -- Force immediate UI refresh
-        if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
-            self:UpdateAutoDeleteListFrame() -- This will refresh the display
-        end
-        
-        -- Also refresh main UI if it's showing
+    self:InitDB()
+    if type(itemID) == "table" then itemID = itemID.itemID end
+    if itemID and self.db.autoDeleteList[itemID] then
+        self.db.autoDeleteList[itemID] = nil
+        self:SaveConfig()
         self:RefreshUI()
-        return true
     end
-    
-    return false
 end
 
 function IM:ClearAutoDeleteList()
-    if not self.autoDeleteList then
-        self.autoDeleteList = {}
-    else
-        -- Clear the table properly
-        for i = #self.autoDeleteList, 1, -1 do
-            table.remove(self.autoDeleteList, i)
-        end
+    self:InitDB()
+    self.db.autoDeleteList = {}
+    self.autoDeleteList = self.db.autoDeleteList
+    self:SaveConfig()
+    self:RefreshUI()
+    if IM_AutoListFrame and IM_AutoListFrame:IsShown() then
+        IM:UpdateAutoListFrame()
     end
-    
-    self:SaveAutoDeleteList()
-    IM:RefreshUI()
-    
-    if IM_AutoDeleteListFrame and IM_AutoDeleteListFrame:IsShown() then
-        self:UpdateAutoDeleteListFrame()
-    end
-    
     print("Inventory Manager: Auto-delete list cleared")
 end
 
-function IM:SaveIgnoredList()
-    IM_IgnoredListDB = self.ignoredItems
-end
-
-function IM:AddToIgnoredList(suggestion)
-	if not suggestion or not suggestion.itemID then
-        print("Inventory Manager: Cannot add invalid item to ignored list")
-        return
-    end
-    self.ignoredItems = self.ignoredItems or {}
-    
-    local found = false
-    for i, ignoredItem in ipairs(self.ignoredItems) do
-        if ignoredItem.itemID == suggestion.itemID then
-            found = true
-            break
-        end
-    end
-    
-    if not found then
-        local ignoredEntry = self:CopyTable(suggestion)
-        self.ignoredItems[#self.ignoredItems + 1] = ignoredEntry
-        self:RemoveFromVendorList(suggestion.itemID)
-        self:RemoveFromAutoDeleteList(suggestion.itemID)
-    end
-    
-    self:SaveIgnoredList()
-    IM:RefreshUI()
-
-    if IM_IgnoredListFrame and IM_IgnoredListFrame:IsShown() then
-        self:UpdateIgnoredListFrame()
+function IM:AddToIgnoredList(item)
+    self:InitDB()
+    local itemID = type(item) == "table" and item.itemID or item
+    if itemID then
+        local name, _, quality, _, _, _, _, _, _, texture = GetItemInfo(itemID)
+        self.db.ignoredItems[itemID] = {
+            itemID = itemID,
+            name = (type(item) == "table" and (item.displayName or item.name)) or name or ("Item #" .. itemID),
+            quality = (type(item) == "table" and item.quality) or quality or 1,
+            texture = (type(item) == "table" and item.texture) or texture or "Interface\\Icons\\INV_Misc_QuestionMark"
+        }
+        self:RemoveFromVendorList(itemID)
+        self:RemoveFromAutoDeleteList(itemID)
+        self:SaveConfig()
+        self:RefreshUI()
     end
 end
 
 function IM:RemoveFromIgnoredList(itemID)
-    for i, ignoredItem in ipairs(self.ignoredItems) do
-        if ignoredItem.itemID == itemID then
-            table.remove(self.ignoredItems, i)
-            self:SaveIgnoredList()
-            IM:RefreshUI()
-            if IM_IgnoredListFrame and IM_IgnoredListFrame:IsShown() then
-                self:UpdateIgnoredListFrame()
-            end
-            break
-        end
+    self:InitDB()
+    if type(itemID) == "table" then itemID = itemID.itemID end
+    if itemID and self.db.ignoredItems[itemID] then
+        self.db.ignoredItems[itemID] = nil
+        self:SaveConfig()
+        self:RefreshUI()
     end
 end
 
 function IM:ClearIgnoredList()
-    self.ignoredItems = {}
-    self:SaveIgnoredList()
-    IM:RefreshUI()
+    self:InitDB()
+    self.db.ignoredItems = {}
+    self.ignoredItems = self.db.ignoredItems
+    self:SaveConfig()
+    self:RefreshUI()
     if IM_IgnoredListFrame and IM_IgnoredListFrame:IsShown() then
         self:UpdateIgnoredListFrame()
     end
 end
 
-function IM:SaveVendorList()
-    IM_VendorListDB = self.vendorList
-end
-
-function IM:AddToVendorList(suggestion)
-	if not suggestion or not suggestion.itemID then
-        print("Inventory Manager: Cannot add invalid item to vendor list")
-        return
+function IM:AddToVendorList(item)
+    self:InitDB()
+    local itemID = type(item) == "table" and item.itemID or item
+    if itemID then
+        local name, link, quality, _, _, _, _, _, _, texture, sellPrice = GetItemInfo(itemID)
+        
+        -- Fallback to passed table data if GetItemInfo is uncached at the moment
+        self.db.vendorList[itemID] = {
+            itemID = itemID,
+            name = (type(item) == "table" and (item.displayName or item.name)) or name or ("Item #" .. itemID),
+            link = (type(item) == "table" and item.link) or link,
+            quality = (type(item) == "table" and item.quality) or quality or 1,
+            texture = (type(item) == "table" and item.texture) or texture or "Interface\\Icons\\INV_Misc_QuestionMark",
+            sellPrice = (type(item) == "table" and item.sellPrice) or sellPrice or 0,
+            totalCount = (type(item) == "table" and item.totalCount) or 1,
+            stackValue = (type(item) == "table" and item.stackValue) or 0,
+            bag = type(item) == "table" and item.bag,
+            slot = type(item) == "table" and item.slot,
+        }
+        self:RemoveFromIgnoredList(itemID)
+        self:RemoveFromAutoDeleteList(itemID)
+        self:SaveConfig()
+        self:RefreshUI()
     end
-    local found = false
-    for i, vendorItem in ipairs(self.vendorList) do
-        if vendorItem.itemID == suggestion.itemID then
-            -- Item already in vendor list, just update the locations
-            for _, loc in ipairs(suggestion.locations) do
-                local locationExists = false
-                for _, existingLoc in ipairs(vendorItem.locations) do
-                    if existingLoc.bag == loc.bag and existingLoc.slot == loc.slot then
-                        locationExists = true
-                        break
-                    end
-                end
-                if not locationExists then
-                    table.insert(vendorItem.locations, loc)
-                end
-            end
-            vendorItem.totalCount = vendorItem.totalCount + suggestion.totalCount
-            vendorItem.stackValue = vendorItem.stackValue + suggestion.stackValue
-            found = true
-            break
-        end
-    end
-    
-    if not found then
-        local vendorEntry = self:CopyTable(suggestion)
-        self.vendorList[#self.vendorList + 1] = vendorEntry
-        self:RemoveFromAutoDeleteList(suggestion.itemID)
-        self:RemoveFromIgnoredList(suggestion.itemID)
-    end
-   
-    IM:RefreshUI()
-    
-    -- Update sell list frame if it's open
-    if IM_SellListFrame and IM_SellListFrame:IsShown() then
-        self:UpdateSellListFrame()
-    end
-    
-    self:SaveVendorList()
 end
 
 function IM:RemoveFromVendorList(itemID)
-    for i, vendorItem in ipairs(self.vendorList) do
-        if vendorItem.itemID == itemID then
-            table.remove(self.vendorList, i)
-			IM:RefreshUI()
-            if IM_SellListFrame and IM_SellListFrame:IsShown() then
-                self:UpdateSellListFrame()
-            end
-            break
-        end
+    self:InitDB()
+    if type(itemID) == "table" then itemID = itemID.itemID end
+    if itemID and self.db.vendorList[itemID] then
+        self.db.vendorList[itemID] = nil
+        self:SaveConfig()
+        self:RefreshUI()
     end
-	self:SaveVendorList()
 end
 
 function IM:ClearVendorList()
-    self.vendorList = {}
-	IM:RefreshUI()
+    self:InitDB()
+    self.db.vendorList = {}
+    self.vendorList = self.db.vendorList
+    self:SaveConfig()
+    self:RefreshUI()
     if IM_SellListFrame and IM_SellListFrame:IsShown() then
         self:UpdateSellListFrame()
     end
-	self:SaveVendorList()
 end
 
 function IM:ConfirmDeleteSuggestion(suggestion)
@@ -1691,20 +1387,15 @@ function IM:DeleteSuggestion(suggestion)
     
     if deletedCount > 0 then
         print(string.format("Inventory Manager: Deleted %s (%d items)", suggestion.displayName or suggestion.name, totalItems))
-        -- Log the deletion
         self:LogDeletion(suggestion.link or suggestion.name, totalItems, "manual")
         self:ScheduleRefresh()
     end
 end
 
 function IM:ProcessAutoDeleteItems()
-    if not self.db.autoDeleteEnabled or #self.autoDeleteList == 0 then
+    self:InitDB()
+    if not self.db.autoDeleteEnabled or not next(self.db.autoDeleteList) then
         return
-    end
-    
-    local autoDeleteItemsByID = {}
-    for _, item in ipairs(self.autoDeleteList) do
-        autoDeleteItemsByID[item.itemID] = item
     end
     
     local deletedSlots = 0
@@ -1716,13 +1407,11 @@ function IM:ProcessAutoDeleteItems()
             local texture, count, locked, quality, readable, lootable, link = GetContainerItemInfo(bag, slot)
             if texture and link and not locked then
                 local itemID = self:GetItemIDFromLink(link)
-                if itemID and autoDeleteItemsByID[itemID] then
-                    -- Delete the item
+                if itemID and self.db.autoDeleteList[itemID] then
                     PickupContainerItem(bag, slot)
                     DeleteCursorItem()
                     deletedSlots = deletedSlots + 1
                     
-                    -- Track deleted items with their links and counts
                     if not deletedItems[link] then
                         deletedItems[link] = 0
                     end
@@ -1743,7 +1432,6 @@ function IM:ProcessAutoDeleteItems()
             message = message .. itemLink .. " x" .. itemCount
             firstItem = false
             
-            -- Log each auto-deletion
             self:LogDeletion(itemLink, itemCount, "auto")
         end
         
@@ -1788,25 +1476,31 @@ function IM:DeleteAllSuggestions()
         for _, location in ipairs(suggestion.locations) do
             local texture, count, locked = GetContainerItemInfo(location.bag, location.slot)
             if texture and not locked then
-                PickupContainerItem(location.bag, location.slot)
-                DeleteCursorItem()
-                deletedCount = deletedCount + 1
-                totalItems = totalItems + count
+                local success = pcall(function()
+                    PickupContainerItem(location.bag, location.slot)
+                    DeleteCursorItem()
+                    deletedCount = deletedCount + 1
+                    totalItems = totalItems + count
+                end)
+                if success then
+                    self:LogDeletion(suggestion.link or suggestion.name, count, "manual")
+                end
             end
         end
     end
     
     if deletedCount > 0 then
         print(string.format("Inventory Manager: Deleted %d items (%d Bag Slots)", totalItems, deletedCount))
-        IM:ScheduleRefresh()
+        self:ScheduleRefresh()
     else
         print("Inventory Manager: No items could be deleted.")
     end
 end
 
 function IM:RefreshVendorListLocations()
+    self:InitDB()
     local vendorItemsByID = {}
-    for _, vendorItem in ipairs(self.vendorList) do
+    for _, vendorItem in pairs(self.db.vendorList) do
         vendorItemsByID[vendorItem.itemID] = vendorItem
         vendorItem.locations = {}
         vendorItem.totalCount = 0
@@ -1820,11 +1514,9 @@ function IM:RefreshVendorListLocations()
             if texture and link and not locked then
                 local itemID = self:GetItemIDFromLink(link)
                 
-                -- Check if this item is in our vendor list
                 local vendorItem = vendorItemsByID[itemID]
                 if vendorItem then
                     vendorItem.totalCount = vendorItem.totalCount + count
-                    -- Recalculate stack value using current sell price
                     local sellPrice = vendorItem.sellPrice or 0
                     vendorItem.stackValue = vendorItem.stackValue + (sellPrice * count / 10000)
                     table.insert(vendorItem.locations, {bag = bag, slot = slot, count = count})
@@ -1835,11 +1527,12 @@ function IM:RefreshVendorListLocations()
 end
 
 function IM:SellVendorItems()
+    self:RefreshVendorListLocations()
+    
     local totalValue = 0
     local itemsSold = 0
     local stacksSold = 0
 
-    -- Helper to sell a single slot
     local function SellSlot(bag, slot, sellPrice, count)
         local texture, countInSlot, locked = GetContainerItemInfo(bag, slot)
         if texture and not locked then
@@ -1853,14 +1546,14 @@ function IM:SellVendorItems()
         return false
     end
 
-    -- 1) Sell manually added vendor list items
-    for _, vendorItem in ipairs(self.vendorList) do
-        for _, location in ipairs(vendorItem.locations) do
-            SellSlot(location.bag, location.slot, vendorItem.sellPrice, vendorItem.totalCount)
+    for _, vendorItem in pairs(self.db.vendorList) do
+        if vendorItem.locations then
+            for _, location in ipairs(vendorItem.locations) do
+                SellSlot(location.bag, location.slot, vendorItem.sellPrice, vendorItem.totalCount)
+            end
         end
     end
 
-    -- 2) Sell all grey (quality 0) items – using GetItemInfo for reliable quality
     for bag = 0, 4 do
         local slots = GetContainerNumSlots(bag)
         for slot = 1, slots do
@@ -1868,7 +1561,6 @@ function IM:SellVendorItems()
             if texture and not locked and link then
                 local itemID = self:GetItemIDFromLink(link)
                 if itemID then
-                    -- Get reliable quality from cached item info
                     local _, _, itemQuality, _, _, _, _, _, _, _, sellPrice = GetItemInfo(itemID)
                     if itemQuality == 0 and sellPrice and sellPrice > 0 then
                         SellSlot(bag, slot, sellPrice, count)
@@ -1883,7 +1575,6 @@ function IM:SellVendorItems()
         local formattedValue = self:FormatMoneyWithIcons(totalCopper)
         print(string.format("Inventory Manager: Sold %d items (%d slots) for %s", itemsSold, stacksSold, formattedValue))
 
-        -- Refresh vendor list locations (some items may have been sold)
         self:RefreshVendorListLocations()
         IM:RefreshUI()
         if IM_SellListFrame and IM_SellListFrame:IsShown() then
@@ -1894,343 +1585,124 @@ function IM:SellVendorItems()
     end
 end
 
-function IM:SaveFramePosition(frame)
-    local point, _, relativePoint, x, y = frame:GetPoint()
-    local frameName = frame:GetName()
+function IM:SaveFramePosition(frame, frameKey)
+    if not frame then return end
     
-    if frameName == "IM_MainFrame" then
-        self.framePositions.main = {point = point, relativePoint = relativePoint, x = x, y = y}
-    elseif frameName == "IM_SellListFrame" then
-        self.framePositions.sellList = {point = point, relativePoint = relativePoint, x = x, y = y}
-    elseif frameName == "IM_IgnoredListFrame" then
-        self.framePositions.ignoredList = {point = point, relativePoint = relativePoint, x = x, y = y}
-    elseif frameName == "IM_AutoDeleteListFrame" then
-        self.framePositions.autoDeleteList = {point = point, relativePoint = relativePoint, x = x, y = y}
-    elseif frameName == "IM_SimpleSettingsFrame" then
-        self.framePositions.simpleSettings = {point = point, relativePoint = relativePoint, x = x, y = y}
-    elseif frameName == "IM_ConfigFrame" then
-        self.framePositions.config = {point = point, relativePoint = relativePoint, x = x, y = y}
-    end
-    
-    -- Save to per-character SavedVariables
-    IM_FramePositions = self.framePositions
+    local name = frameKey or (frame:GetName() and string.gsub(frame:GetName(), "IM_", ""))
+    if not name then return end
+
+    local point, relativeTo, relativePoint, x, y = frame:GetPoint()
+    self:InitDB()
+    self.db.framePositions = self.db.framePositions or {}
+    self.db.framePositions[name] = {
+        point = point or "CENTER",
+        relativePoint = relativePoint or "CENTER",
+        x = x or 0,
+        y = y or 0
+    }
+    self:SaveConfig()
 end
 
 function IM:RestoreFramePosition(frame, defaultPoint, defaultX, defaultY)
+    if not frame then return end
+    
+    self:InitDB()
+    defaultPoint = defaultPoint or "CENTER"
+    defaultX = defaultX or 0
+    defaultY = defaultY or 0
+    
     local frameName = frame:GetName()
-    local position
+    local frameKey = frameName and string.gsub(frameName, "IM_", "")
     
-    if frameName == "IM_MainFrame" then
-        position = self.framePositions.main
-    elseif frameName == "IM_SellListFrame" then
-        position = self.framePositions.sellList
-    elseif frameName == "IM_IgnoredListFrame" then
-        position = self.framePositions.ignoredList
-    elseif frameName == "IM_AutoDeleteListFrame" then
-        position = self.framePositions.autoDeleteList
-    elseif frameName == "IM_SimpleSettingsFrame" then
-        position = self.framePositions.simpleSettings
-    elseif frameName == "IM_ConfigFrame" then
-        position = self.framePositions.config
-    end
-    
-    if position then
+    if frameKey and self.db.framePositions and self.db.framePositions[frameKey] then
+        local pos = self.db.framePositions[frameKey]
         frame:ClearAllPoints()
-        frame:SetPoint(position.point, UIParent, position.relativePoint, position.x, position.y)
+        frame:SetPoint(pos.point or defaultPoint, UIParent, pos.relativePoint or defaultPoint, pos.x or defaultX, pos.y or defaultY)
     else
         frame:ClearAllPoints()
-        frame:SetPoint(defaultPoint, defaultX, defaultY)
+        frame:SetPoint(defaultPoint, UIParent, defaultPoint, defaultX, defaultY)
     end
 end
 
+---------------------------------------------------------
+-- Slash Command Handling (/im, /inventorymanager)
+---------------------------------------------------------
 SLASH_INVENTORYMANAGER1 = "/im"
 SLASH_INVENTORYMANAGER2 = "/inventorymanager"
 
 SlashCmdList["INVENTORYMANAGER"] = function(msg)
-    -- Only create frames when explicitly commanded
-    IM:CreateFrames()
-    IM:ShowSuggestions()
-end
+    local command = msg and string.lower(string.trim(msg)) or ""
+    
+    -- Ensure DB is initialized before scanning or showing UI
+    if not IM.db then
+        IM:InitDB()
+    end
 
-SLASH_IMSELL1 = "/imsell"
-SlashCmdList["IMSELL"] = function(msg)
-    if MerchantFrame:IsShown() then
-        IM:SellVendorItems()
+    if command == "config" or command == "options" then
+        IM:ShowConfigFrame()
+    elseif command == "settings" then
+        IM:ShowSimpleSettings()
     else
-        print("Inventory Manager: You must be at a vendor to sell items.")
-    end
-end
-
-SLASH_IMCONFIG1 = "/imconfig"
-
-SlashCmdList["IMCONFIG"] = function(msg)
-	IM:ShowConfigFrame()
-end
-
-function IM:ForceRefreshItemData()
-    -- Clear pending items and reprocess
-    self.pendingItems = {}
-    self.pendingItemsProcessed = {}
-    
-    -- Force a complete rescan
-    self:RefreshUI()
-    
-    print("Inventory Manager: Force refreshed item data")
-end
-
--- Add a slash command for manual refresh
-SLASH_IMREFRESH1 = "/imrefresh"
-SlashCmdList["IMREFRESH"] = function(msg)
-    IM:ForceRefreshItemData()
-end
-
-function IM:ImproveCheckPendingItems()
-    if #self.pendingItems > 0 then
-        local stillPending = {}
-        local foundItems = false
-        
-        for _, itemData in ipairs(self.pendingItems) do
-            local bag, slot, itemID, link = itemData.bag, itemData.slot, itemData.itemID, itemData.link
-            local texture, count, locked, quality = GetContainerItemInfo(bag, slot)
-            
-            if texture then
-                -- Try to get item info again
-                local itemName, itemLink, itemRarity = GetItemInfo(itemID or link)
-                if itemName and itemName ~= "Unknown Item" then
-                    -- Item data is now available, mark for rescan
-                    foundItems = true
-                    self.pendingItemsProcessed[itemID] = nil
-                else
-                    table.insert(stillPending, itemData)
-                end
-            end
-        end
-        
-        self.pendingItems = stillPending
-        
-        -- If we found items with data now available, force a refresh
-        if foundItems then
-            IM:ScheduleRefresh()
+        if IM_MainFrame and IM_MainFrame:IsShown() then
+            IM_MainFrame:Hide()
+        else
+            IM:CreateFrames()
+            IM:ShowSuggestions()
         end
     end
 end
 
-function IM:ScheduleRefresh()
-    if not self.refreshTimer then
-        self.refreshTimer = CreateFrame("Frame")
-        self.refreshTimer:Hide()
-        self.refreshTimer:SetScript("OnUpdate", function(self, elapsed)
-            self.timeElapsed = (self.timeElapsed or 0) + elapsed
-            if self.timeElapsed >= 0.5 then
-                -- Check pending items first
-				  IM:CleanupPendingItems()
-                if IM.pendingItems and #IM.pendingItems > 0 then
-                    IM:ImproveCheckPendingItems()
-                end
-                
-                -- Then refresh UI
-                IM:RefreshUI()
-                
-                self.timeElapsed = 0
-                self:Hide()
-            end
-        end)
-    end
-    
-    -- Reset and start timer
-    self.refreshTimer.timeElapsed = 0
-    self.refreshTimer:Show()
-end
-
--- Event handling
+---------------------------------------------------------
+-- Event Loading & Minimap/Screen Toggle Icon Setup
+---------------------------------------------------------
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:RegisterEvent("PLAYER_LOGIN")
+eventFrame:RegisterEvent("BAG_UPDATE")
+-- Add merchant events:
 eventFrame:RegisterEvent("MERCHANT_SHOW")
 eventFrame:RegisterEvent("MERCHANT_CLOSED")
-eventFrame:RegisterEvent("LOOT_CLOSED")
-eventFrame:RegisterEvent("BAG_UPDATE")
-eventFrame:RegisterEvent("PLAYER_LOGIN")
 
-eventFrame:SetScript("OnEvent", function(self, event, ...)
-    if event == "ADDON_LOADED" then
-        local addon = ...
-        if addon == "InventoryManager" then
-            if not IM_ADDON_LOADED then
-                IM_ADDON_LOADED = true
-                IM:OnInitialize()
-                print("Inventory Manager: Initialized successfully")
+eventFrame:SetScript("OnEvent", function(self, event, arg1)
+    if event == "ADDON_LOADED" and arg1 == addonName then
+        IM:InitDB()
+        if IM_DeletionLogDB then
+            IM.deletionLog = IM_DeletionLogDB
+        end
+        IM_ADDON_LOADED = true
+        self:UnregisterEvent("ADDON_LOADED")
+        
+    elseif event == "PLAYER_LOGIN" then
+        if IM.CreateToggleIcon then
+            local icon = IM:CreateToggleIcon()
+            if icon then icon:Show() end
+        end
+        if IM.ScheduleCleanup then IM:ScheduleCleanup() end
+        if IM.ScheduleRefresh then IM:ScheduleRefresh() end
+        
+    elseif event == "BAG_UPDATE" then
+        if IM_ADDON_LOADED and IM.db then
+            if IM.CheckBagSpaceAndOpen then IM:CheckBagSpaceAndOpen() end
+            if IM.ProcessAutoDeleteItems then IM:ProcessAutoDeleteItems() end
+        end
+
+    -- Add vendor event handling:
+    elseif event == "MERCHANT_SHOW" then
+        if IM_ADDON_LOADED and IM.db and IM.db.enabled then
+            -- Auto-sell configured items if enabled
+            if IM.db.autoSellAtVendor then
+                IM:SellVendorItems()
+            end
+            
+            -- Show Sell List panel if enabled
+            if IM.db.showSellListAtVendor then
+                IM:ShowSellListFrame()
             end
         end
-    elseif event == "MERCHANT_SHOW" then
-        if IM and IM.db and IM.db.autoSellAtVendor then
-            IM:SellVendorItems()
-        end
-        if IM and IM.db and IM.db.showSellListAtVendor then
-            IM:RefreshVendorListLocations()
-            IM:ShowSellListFrame(true)
-        end
+
     elseif event == "MERCHANT_CLOSED" then
         if IM_SellListFrame and IM_SellListFrame:IsShown() then
             IM_SellListFrame:Hide()
         end
-        IM:ScheduleRefresh()
-    elseif event == "LOOT_CLOSED" then
-		if IM and IM.db and IM.db.autoOpenOnLowSpace then
-			IM:CheckBagSpaceAndOpen()
-		end
-		IM:ProcessAutoDeleteItems()
-		IM:ScheduleRefresh()
-	elseif event == "BAG_UPDATE" then
-		local bagID = ...
-		if bagID and bagID >= 0 and bagID <= 4 then
-			IM:ProcessAutoDeleteItems()
-			IM:ScheduleRefresh()
-		end
-	elseif event == "PLAYER_LOGIN" then
-        if IM and IM.UpdateToggleIcon then
-            IM:UpdateToggleIcon()
-        end
     end
 end)
-
-function IM:OnInitialize()
-    -- Load configuration first
-    if IM_ConfigDB then
-        self.db = IM_ConfigDB
-        print("Inventory Manager: Loading existing config")
-        
-        -- Ensure all default config values exist
-        for k, v in pairs(self.defaultConfig) do
-            if self.db[k] == nil then
-                self.db[k] = v
-            end
-        end
-		
-		-- Inside IM:OnInitialize(), after loading self.db
-		if self.db.freeSlotsThreshold == nil then
-			-- If old lowSpaceThreshold exists, we could use it to derive a value?
-			-- Simpler: set a default of 3
-			self.db.freeSlotsThreshold = 3
-			self:SaveConfig()
-		end
-		-- Optionally remove the old field to keep DB clean
-		self.db.lowSpaceThreshold = nil
-        
-        -- FIXED: Ensure ALL trade goods categories exist in the database
-        for category, defaultValue in pairs(self.defaultConfig.ignoreTradeGoodsTypes) do
-            if self.db.ignoreTradeGoodsTypes[category] == nil then
-                self.db.ignoreTradeGoodsTypes[category] = defaultValue
-                print(string.format("Inventory Manager: Initializing missing trade goods category: %s = %s", category, tostring(defaultValue)))
-            end
-        end
-        
-        -- Ensure quality settings exist
-        local qualityKeys = {"POOR", "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "ARTIFACT"}
-        for _, qualityKey in ipairs(qualityKeys) do
-            if self.db.ignoreQuality[qualityKey] == nil then
-                self.db.ignoreQuality[qualityKey] = self.defaultConfig.ignoreQuality[qualityKey] or false
-            end
-        end
-        
-        -- Ensure item type settings exist
-        for typeName, defaultValue in pairs(self.defaultConfig.ignoreItemTypes) do
-            if self.db.ignoreItemTypes[typeName] == nil then
-                self.db.ignoreItemTypes[typeName] = defaultValue
-            end
-        end
-		-- Ensure Always  Ignore exist
-        for typeName, defaultValue in pairs(self.defaultConfig.alawaysignore) do
-            if self.db.alawaysignore[typeName] == nil then
-                self.db.alawaysignore[typeName] = defaultValue
-            end
-        end
-		self.db.alawaysignore["Miscellaneous"] = false
-        
-        -- Ensure trade goods settings exist
-        for typeName, defaultValue in pairs(self.defaultConfig.ignoreTradeGoodsTypes) do
-            if self.db.ignoreTradeGoodsTypes[typeName] == nil then
-                self.db.ignoreTradeGoodsTypes[typeName] = defaultValue
-            end
-        end
-    else
-        self.db = self:CopyTable(self.defaultConfig)
-        IM_ConfigDB = self.db
-    end
-    
-    self:InitializeDeletionLog()
-    
-    self:CreateToggleIcon()
-    self:CreateSimpleSettingsFrame()
-    
-    if IM_VendorListDB then
-        self.vendorList = IM_VendorListDB
-    else
-        self.vendorList = self.vendorList or {}
-        IM_VendorListDB = self.vendorList
-    end
-    
-    if IM_IgnoredListDB then
-        self.ignoredItems = IM_IgnoredListDB
-    else
-        self.ignoredItems = self.ignoredItems or {}
-        IM_IgnoredListDB = self.ignoredItems
-    end
-    
-    if IM_AutoDeleteListDB then
-        self.autoDeleteList = IM_AutoDeleteListDB
-    else
-        self.autoDeleteList = self.autoDeleteList or {}
-        IM_AutoDeleteListDB = self.autoDeleteList
-    end
-	
-	self:ValidateAutoDeleteList()
-    self:CleanupAutoDeleteList()
-    
-    if IM_FramePositions then
-        for frameName, position in pairs(IM_FramePositions) do
-            self.framePositions[frameName] = position
-        end
-    end
-    IM_FramePositions = self.framePositions
-    self:ScheduleCleanup()
-	
-    local playerName = UnitName("player")
-    local realmName = GetRealmName()
-    print(string.format("Inventory Manager loaded for %s-%s. Use /im or /imconfig.", playerName, realmName))
-
-end
-
-function IM:InitializeDeletionLog()
-    if IM_DeletionLogDB then
-        self.deletionLog = IM_DeletionLogDB
-        
-        -- Ensure the deletion log has the proper structure
-        if not self.deletionLog.sessions then
-            self.deletionLog.sessions = {}
-        end
-        
-        if not self.deletionLog.allTime then
-            self.deletionLog.allTime = {}
-        end
-        
-        -- Ensure we have a current session
-        if not self.deletionLog.currentSession or not self.deletionLog.sessions[self.deletionLog.currentSession] then
-            self:StartNewSession()
-        end
-        
-        -- Clean up old sessions
-        self:CleanupOldSessions()
-    else
-        -- Initialize fresh deletion log
-        self.deletionLog = {
-            sessions = {},
-            allTime = {},
-            lastCleanup = time()
-        }
-        IM_DeletionLogDB = self.deletionLog
-        self:StartNewSession()
-    end
-    
-    -- Force a save to ensure the structure is persisted
-    self:SaveDeletionLog()
-end
