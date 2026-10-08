@@ -73,7 +73,7 @@ function IM:CreateConfigPanel()
     if IM_ConfigFrame then return IM_ConfigFrame end
 
     local frame = CreateFrame("Frame", "IM_ConfigFrame", UIParent)
-    IM:StyleFrame(frame, 560, 620, "Inventory Manager — Configuration")
+    IM:StyleFrame(frame, 560, 620, IM:L("Inventory Manager — Configuration"))
 
     -- Scroll frame
     frame.scroll = CreateFrame("ScrollFrame", "IM_ConfigScrollFrame", frame, "UIPanelScrollFrameTemplate")
@@ -113,7 +113,7 @@ function IM:CreateConfigPanel()
     ---------------------------------------------------------
     local qualHeader = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     qualHeader:SetPoint("TOPLEFT", 15, -55)
-    qualHeader:SetText("Ignore Gear Quality:")
+    qualHeader:SetText(IM:L("Ignore Gear Quality:"))
 
     local qualityOrder = {"POOR", "COMMON", "UNCOMMON"}
     local qualityCheckboxes = {}
@@ -124,7 +124,7 @@ function IM:CreateConfigPanel()
         
         local qColor = (IM.qualityColors and IM.qualityColors[i-1]) or "|cFFFFFFFF"
         local qName = (IM.qualityNames and IM.qualityNames[i-1]) or qualityKey
-        SetCheckboxText(cb, qColor .. qName)
+        SetCheckboxText(cb, qColor .. IM:L(qName))
 
         cb:SetChecked(self.db.ignoreQuality and self.db.ignoreQuality[qualityKey])
         cb:SetScript("OnClick", function(s)
@@ -137,7 +137,7 @@ function IM:CreateConfigPanel()
 
     local typeHeader = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     typeHeader:SetPoint("TOPLEFT", 220, -55)
-    typeHeader:SetText("Ignore Item Types:")
+    typeHeader:SetText(IM:L("Ignore Item Types:"))
 
     local itemTypes = {"Weapon", "Armor", "Consumable", "Miscellaneous", "Quest", "Recipe"}
     local typeCheckboxes = {}
@@ -147,7 +147,7 @@ function IM:CreateConfigPanel()
         local row = math.floor((i - 1) / 2)
         local cb = CreateFrame("CheckButton", "IM_Cfg_Type_" .. typeName, frame.scrollChild, "OptionsCheckButtonTemplate")
         cb:SetPoint("TOPLEFT", 220 + (col * 130), -75 - (row * 26))
-        SetCheckboxText(cb, typeName)
+        SetCheckboxText(cb, IM:L(typeName))
         cb:SetChecked(self.db.ignoreItemTypes and self.db.ignoreItemTypes[typeName])
         cb:SetScript("OnClick", function(s)
             IM.db.ignoreItemTypes[typeName] = s:GetChecked() and true or false
@@ -164,7 +164,7 @@ function IM:CreateConfigPanel()
     ---------------------------------------------------------
     local tgHeader = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     tgHeader:SetPoint("TOPLEFT", 15, -180)
-    tgHeader:SetText("Ignore Trade Goods Categories:")
+    tgHeader:SetText(IM:L("Ignore Trade Goods Categories:"))
 
     local tradeGoodsCategories = {
         "Cloth", "Leather", "Metal", "Stone", "Meat", "Herb", 
@@ -177,7 +177,7 @@ function IM:CreateConfigPanel()
         local row = math.floor((i - 1) / 3)
         local cb = CreateFrame("CheckButton", "IM_Cfg_TG_" .. category, frame.scrollChild, "OptionsCheckButtonTemplate")
         cb:SetPoint("TOPLEFT", 20 + (col * 155), -200 - (row * 26))
-        SetCheckboxText(cb, category)
+        SetCheckboxText(cb, IM:L(category))
         cb:SetChecked(self.db.ignoreTradeGoodsTypes and self.db.ignoreTradeGoodsTypes[category] or false)
         cb:SetScript("OnClick", function(s)
             IM.db.ignoreTradeGoodsTypes[category] = s:GetChecked() and true or false
@@ -194,7 +194,7 @@ function IM:CreateConfigPanel()
     ---------------------------------------------------------
     local valLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     valLabel:SetPoint("TOPLEFT", 15, -355)
-    valLabel:SetText("Suggest items worth less than:")
+    valLabel:SetText(IM:L("Suggest items worth less than:"))
 
     local goldInput = CreateFrame("EditBox", "IM_Cfg_MinGoldEditBox", frame.scrollChild, "InputBoxTemplate")
     goldInput:SetSize(60, 20)
@@ -205,7 +205,7 @@ function IM:CreateConfigPanel()
 
     local goldSymbol = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     goldSymbol:SetPoint("LEFT", goldInput, "RIGHT", 5, 0)
-    goldSymbol:SetText("Gold")
+    goldSymbol:SetText(IM:L("Gold"))
 
     local goldError = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     goldError:SetPoint("TOPLEFT", 15, -378)
@@ -214,7 +214,7 @@ function IM:CreateConfigPanel()
     goldInput:SetScript("OnEnterPressed", function(s)
         local val = tonumber(s:GetText())
         if not val or val ~= val or val < 0 or val == math.huge then
-            goldError:SetText("Enter a valid, non-negative value in gold.")
+            goldError:SetText(IM:L("Enter a valid, non-negative value in gold."))
             return
         end
 
@@ -266,7 +266,7 @@ function IM:CreateConfigPanel()
     autoDeleteWarning:SetPoint("TOPLEFT", 42, -503)
     autoDeleteWarning:SetWidth(440)
     autoDeleteWarning:SetJustifyH("LEFT")
-    autoDeleteWarning:SetText("Warning: matching items are permanently deleted from your bags without another prompt.")
+    autoDeleteWarning:SetText(IM:L("Warning: matching items are permanently deleted from your bags without another prompt."))
     autoDeleteWarning:SetTextColor(1, 0.55, 0.35)
 
     IM:SetFreeSlotsThreshold(self.db.freeSlotsThreshold or 1)
@@ -276,12 +276,12 @@ function IM:CreateConfigPanel()
     freeSlotsSlider:SetMinMaxValues(0, 10)
     freeSlotsSlider:SetValueStep(1)
     freeSlotsSlider:SetValue(self.db.freeSlotsThreshold or 1)
-    _G[freeSlotsSlider:GetName() .. "Text"]:SetText("Open at or below: " .. (self.db.freeSlotsThreshold or 1) .. " free slots")
+    _G[freeSlotsSlider:GetName() .. "Text"]:SetText(IM:L("Open at or below: %d free slots", self.db.freeSlotsThreshold or 1))
     _G[freeSlotsSlider:GetName() .. "Low"]:SetText("0")
     _G[freeSlotsSlider:GetName() .. "High"]:SetText("10")
     freeSlotsSlider:SetScript("OnValueChanged", function(slider, value)
         local threshold = math.floor(value)
-        _G[slider:GetName() .. "Text"]:SetText("Open at or below: " .. threshold .. " free slots")
+        _G[slider:GetName() .. "Text"]:SetText(IM:L("Open at or below: %d free slots", threshold))
         IM:SetFreeSlotsThreshold(threshold)
     end)
     if not self.db.autoOpenOnLowSpace then
@@ -295,7 +295,7 @@ function IM:CreateConfigPanel()
     local resetBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     resetBtn:SetSize(130, 22)
     resetBtn:SetPoint("BOTTOMLEFT", 12, 10)
-    resetBtn:SetText("Defaults")
+    resetBtn:SetText(IM:L("Defaults"))
     resetBtn:SetScript("OnClick", function()
         StaticPopup_Show("IM_CONFIRM_RESET")
     end)
@@ -303,11 +303,11 @@ function IM:CreateConfigPanel()
     local closeBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     closeBtn:SetSize(100, 22)
     closeBtn:SetPoint("BOTTOMRIGHT", -12, 10)
-    closeBtn:SetText("Close")
+    closeBtn:SetText(IM:L("Close"))
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
     StaticPopupDialogs["IM_CONFIRM_RESET"] = {
-        text = "Reset Inventory Manager configuration to defaults? The interface will reload to apply the reset.",
+        text = IM:L("Reset Inventory Manager configuration to defaults? The interface will reload to apply the reset."),
         button1 = "Yes",
         button2 = "No",
         OnAccept = function()

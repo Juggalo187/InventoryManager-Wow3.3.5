@@ -46,7 +46,7 @@ function IM:StyleFrame(frame, width, height, titleText)
 
         frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         frame.title:SetPoint("LEFT", frame.header, "LEFT", 10, 0)
-        frame.title:SetText(titleText)
+        frame.title:SetText(IM:L(titleText))
         frame.title:SetTextColor(0.9, 0.9, 0.9)
     end
 

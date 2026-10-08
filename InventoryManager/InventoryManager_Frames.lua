@@ -4,9 +4,9 @@ local function SetTextTooltip(frame, title, description)
     frame:EnableMouse(true)
     frame:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(title, 1, 1, 1)
+        GameTooltip:SetText(IM:L(title), 1, 1, 1)
         if description then
-            GameTooltip:AddLine(description, 0.8, 0.8, 0.8, true)
+            GameTooltip:AddLine(IM:L(description), 0.8, 0.8, 0.8, true)
         end
         GameTooltip:Show()
     end)
@@ -145,10 +145,10 @@ function IM:CreateToggleIcon()
 
     icon:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Inventory Manager", 1, 1, 1)
-        GameTooltip:AddLine("|cFFFFFFFFLeft-Click:|r Toggle Suggestion Window", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("|cFFFFFFFFRight-Click:|r Quick Settings", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("|cFFFFFFFFLeft-Drag:|r Move Icon", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(IM:L("Inventory Manager"), 1, 1, 1)
+        GameTooltip:AddLine("|cFFFFFFFF" .. IM:L("Left-Click: Toggle Suggestion Window") .. "|r", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("|cFFFFFFFF" .. IM:L("Right-Click: Quick Settings") .. "|r", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("|cFFFFFFFF" .. IM:L("Left-Drag: Move Icon") .. "|r", 0.8, 0.8, 0.8)
         GameTooltip:Show()
     end)
     icon:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -170,14 +170,14 @@ function IM:CreateSimpleSettingsFrame()
     if IM_SimpleSettingsFrame then return IM_SimpleSettingsFrame end
 
     local frame = CreateFrame("Frame", "IM_SimpleSettingsFrame", UIParent)
-    IM:StyleFrame(frame, 250, 220, "Quick Settings")
+    IM:StyleFrame(frame, 250, 220, IM:L("Quick Settings"))
 
     IM:InitDB()
 
     -- Enable Addon
     local enableCB = CreateFrame("CheckButton", "IM_SimpleEnableCB", frame, "OptionsCheckButtonTemplate")
     enableCB:SetPoint("TOPLEFT", 15, -30)
-    _G[enableCB:GetName().."Text"]:SetText("Enable Addon")
+    _G[enableCB:GetName().."Text"]:SetText(IM:L("Enable Addon"))
     enableCB:SetChecked(IM.db.enabled)
     enableCB:SetScript("OnClick", function(s)
         IM.db.enabled = s:GetChecked() and true or false
@@ -188,7 +188,7 @@ function IM:CreateSimpleSettingsFrame()
     -- Auto-sell Trash
     local autoSellCB = CreateFrame("CheckButton", "IM_SimpleAutoSellCB", frame, "OptionsCheckButtonTemplate")
     autoSellCB:SetPoint("TOPLEFT", 15, -58)
-    _G[autoSellCB:GetName().."Text"]:SetText("Auto-sell Trash")
+    _G[autoSellCB:GetName().."Text"]:SetText(IM:L("Auto-sell Trash"))
     autoSellCB:SetChecked(IM.db.autoSellAtVendor)
     autoSellCB:SetScript("OnClick", function(s)
         IM.db.autoSellAtVendor = s:GetChecked() and true or false
@@ -198,7 +198,7 @@ function IM:CreateSimpleSettingsFrame()
     -- Auto-open Low Bag Space Checkbox
     local autoOpenCB = CreateFrame("CheckButton", "IM_SimpleAutoOpenCB", frame, "OptionsCheckButtonTemplate")
     autoOpenCB:SetPoint("TOPLEFT", 15, -86)
-    _G[autoOpenCB:GetName().."Text"]:SetText("Auto-open Low Bag Space")
+    _G[autoOpenCB:GetName().."Text"]:SetText(IM:L("Auto-open Low Bag Space"))
     autoOpenCB:SetChecked(IM.db.autoOpenOnLowSpace)
 
     -- Free Slot Threshold Slider (unified to freeSlotsThreshold)
@@ -211,7 +211,7 @@ function IM:CreateSimpleSettingsFrame()
     thresholdSlider:SetValueStep(1)
     thresholdSlider:SetValue(IM.db.freeSlotsThreshold)
     
-    _G[thresholdSlider:GetName().."Text"]:SetText("Trigger at: " .. IM.db.freeSlotsThreshold .. " free slots")
+    _G[thresholdSlider:GetName().."Text"]:SetText(IM:L("Trigger at: %d free slots", IM.db.freeSlotsThreshold))
     _G[thresholdSlider:GetName().."Low"]:SetText("0")
     _G[thresholdSlider:GetName().."High"]:SetText("10")
 
@@ -221,7 +221,7 @@ function IM:CreateSimpleSettingsFrame()
 
     thresholdSlider:SetScript("OnValueChanged", function(self, value)
         local val = math.floor(value)
-        _G[self:GetName().."Text"]:SetText("Trigger at: " .. val .. " free slots")
+        _G[self:GetName().."Text"]:SetText(IM:L("Trigger at: %d free slots", val))
         IM:SetFreeSlotsThreshold(val)
     end)
 
@@ -231,7 +231,7 @@ function IM:CreateSimpleSettingsFrame()
     local configBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     configBtn:SetSize(110, 22)
     configBtn:SetPoint("BOTTOM", 0, 12)
-    configBtn:SetText("All Options")
+    configBtn:SetText(IM:L("All Options"))
     configBtn:SetScript("OnClick", function()
         frame:Hide()
         if IM.ShowConfigFrame then IM:ShowConfigFrame() end
@@ -254,7 +254,7 @@ function IM:CreateFrames()
     if IM_MainFrame then return end
 
     local frame = CreateFrame("Frame", "IM_MainFrame", UIParent)
-    IM:StyleFrame(frame, 520, 480, "Inventory Manager — Recommendations")
+    IM:StyleFrame(frame, 520, 480, IM:L("Inventory Manager — Recommendations"))
 
     -- Bag Summary Header
     frame.summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -277,7 +277,7 @@ function IM:CreateFrames()
     local deleteAllBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     deleteAllBtn:SetSize(80, 22)
     deleteAllBtn:SetPoint("BOTTOMLEFT", 40, 12)
-    deleteAllBtn:SetText("Delete All")
+    deleteAllBtn:SetText(IM:L("Delete All"))
     deleteAllBtn:SetScript("OnClick", function() IM:ConfirmDeleteAll() end)
     SetTextTooltip(deleteAllBtn, "Delete All Flagged", "Permanently deletes all recommended items currently showing in the list.")
 
@@ -285,7 +285,7 @@ function IM:CreateFrames()
     local refreshBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     refreshBtn:SetSize(65, 22)
     refreshBtn:SetPoint("LEFT", deleteAllBtn, "RIGHT", 5, 0)
-    refreshBtn:SetText("Rescan")
+    refreshBtn:SetText(IM:L("Rescan"))
     refreshBtn:SetScript("OnClick", function() IM:ShowSuggestions() end)
     SetTextTooltip(refreshBtn, "Rescan Bags", "Re-scans your inventory to update suggestions.")
 
@@ -293,7 +293,7 @@ function IM:CreateFrames()
     local sellListBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     sellListBtn:SetSize(75, 22)
     sellListBtn:SetPoint("LEFT", refreshBtn, "RIGHT", 5, 0)
-    sellListBtn:SetText("Sell List")
+    sellListBtn:SetText(IM:L("Sell List"))
     sellListBtn:SetScript("OnClick", function()
         if IM_SellListFrame and IM_SellListFrame:IsShown() then
             IM_SellListFrame:Hide()
@@ -307,7 +307,7 @@ function IM:CreateFrames()
     local ignoreListBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     ignoreListBtn:SetSize(80, 22)
     ignoreListBtn:SetPoint("LEFT", sellListBtn, "RIGHT", 5, 0)
-    ignoreListBtn:SetText("Ignore List")
+    ignoreListBtn:SetText(IM:L("Ignore List"))
     ignoreListBtn:SetScript("OnClick", function()
         if IM_IgnoredListFrame and IM_IgnoredListFrame:IsShown() then
             IM_IgnoredListFrame:Hide()
@@ -321,7 +321,7 @@ function IM:CreateFrames()
     local autoListBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     autoListBtn:SetSize(75, 22)
     autoListBtn:SetPoint("LEFT", ignoreListBtn, "RIGHT", 5, 0)
-    autoListBtn:SetText("Auto List")
+    autoListBtn:SetText(IM:L("Auto List"))
     autoListBtn:SetScript("OnClick", function()
         if IM_AutoListFrame and IM_AutoListFrame:IsShown() then
             IM_AutoListFrame:Hide()
@@ -344,7 +344,7 @@ function IM:ShowSuggestions()
     local suggestions, totalSlots, usedSlots = IM:ScanInventory()
     local freeSlots = (totalSlots or 0) - (usedSlots or 0)
     
-    IM_MainFrame.summary:SetText(string.format("Free Slots: %d / %d  |  Flagged Items: %d", freeSlots, totalSlots or 0, suggestions and #suggestions or 0))
+    IM_MainFrame.summary:SetText(IM:L("Free Slots: %d / %d  |  Flagged Items: %d", freeSlots, totalSlots or 0, suggestions and #suggestions or 0))
 
     -- Clean old content rows
     local child = IM_MainFrame.scrollChild
@@ -405,9 +405,9 @@ function IM:ShowSuggestions()
             local qColor = (IM.qualityColors and IM.qualityColors[item.quality]) or "|cFFFFFFFF"
 			
 			if totalCopper > 0 then
-				title:SetText(qColor .. (item.displayName or item.name or "Unknown") .. "|r x" .. (item.totalCount or 1) .. "|cFFFFFFFF  [" .. (IM:FormatMoneyWithIcons(totalCopper)) .. "]|r")
+				title:SetText(qColor .. (item.displayName or item.name or IM:L("Unknown")) .. "|r x" .. (item.totalCount or 1) .. "|cFFFFFFFF  [" .. (IM:FormatMoneyWithIcons(totalCopper)) .. "]|r")
 			else
-				title:SetText(qColor .. (item.displayName or item.name or "Unknown") .. "|r x" .. (item.totalCount or 1) .. "|cFF808080 [No Value]|r")
+				title:SetText(qColor .. (item.displayName or item.name or IM:L("Unknown")) .. "|r x" .. (item.totalCount or 1) .. "|cFF808080 " .. IM:L("[No Value]") .. "|r")
 			end
 
             titleBtn:SetScript("OnEnter", function(self)
@@ -433,9 +433,9 @@ function IM:ShowSuggestions()
             local reason = reasonFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             reason:SetAllPoints(true)
             reason:SetJustifyH("LEFT")
-            reason:SetText("|cFF808080" .. (item.reason or "Low value item") .. "|r")
+            reason:SetText("|cFF808080" .. IM:L(item.reason or "Low value item") .. "|r")
 
-            SetTextTooltip(reasonFrame, "Recommendation Reason", item.reasonDetails or item.reason or "Flagged based on value, quality, or usage filters.")
+            SetTextTooltip(reasonFrame, IM:L("Recommendation Reason"), IM:L(item.reasonDetails or item.reason or "Flagged based on value, quality, or usage filters."))
 			
 			
             ---------------------------------------------------------
@@ -445,7 +445,7 @@ function IM:ShowSuggestions()
             local delBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
             delBtn:SetSize(42, 20)
             delBtn:SetPoint("RIGHT", 120, 0)
-            delBtn:SetText("Delete")
+            delBtn:SetText(IM:L("Delete"))
             delBtn:SetScript("OnClick", function()
                 IM:ConfirmDeleteSuggestion(item)
             end)
@@ -455,7 +455,7 @@ function IM:ShowSuggestions()
             local ignBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
             ignBtn:SetSize(42, 20)
             ignBtn:SetPoint("RIGHT", delBtn, "LEFT", -2, 0)
-            ignBtn:SetText("Ignore")
+            ignBtn:SetText(IM:L("Ignore"))
             ignBtn:SetScript("OnClick", function()
                 IM:AddToIgnoredList(item)
                 IM:ShowSuggestions()
@@ -466,7 +466,7 @@ function IM:ShowSuggestions()
             local autoBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
             autoBtn:SetSize(38, 20)
             autoBtn:SetPoint("RIGHT", ignBtn, "LEFT", -2, 0)
-            autoBtn:SetText("Auto")
+            autoBtn:SetText(IM:L("Auto"))
             autoBtn:SetScript("OnClick", function()
                 IM:AddToAutoDeleteList(item)
                 IM:ShowSuggestions()
@@ -477,7 +477,7 @@ function IM:ShowSuggestions()
             local sellBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
             sellBtn:SetSize(38, 20)
             sellBtn:SetPoint("RIGHT", autoBtn, "LEFT", -2, 0)
-            sellBtn:SetText("Sell")
+            sellBtn:SetText(IM:L("Sell"))
             sellBtn:SetScript("OnClick", function()
                 IM:AddToVendorList(item)
                 IM:ShowSuggestions()
@@ -507,7 +507,7 @@ function IM:CreateSellListFrame()
     if IM_SellListFrame then return IM_SellListFrame end
 
     local frame = CreateFrame("Frame", "IM_SellListFrame", UIParent)
-    IM:StyleFrame(frame, 380, 420, "Inventory Manager — Vendor Sell List")
+    IM:StyleFrame(frame, 380, 420, IM:L("Inventory Manager — Vendor Sell List"))
 
     -- Summary Header
     frame.summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -526,7 +526,7 @@ function IM:CreateSellListFrame()
     local sellAllBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     sellAllBtn:SetSize(120, 22)
     sellAllBtn:SetPoint("BOTTOMLEFT", 10, 12)
-    sellAllBtn:SetText("Sell All Listed")
+    sellAllBtn:SetText(IM:L("Sell All Listed"))
     sellAllBtn:SetScript("OnClick", function() IM:SellVendorItems() end)
     SetTextTooltip(sellAllBtn, "Sell All Listed", "Sells all queued items to the currently open vendor.")
     frame.sellAllBtn = sellAllBtn
@@ -535,7 +535,7 @@ function IM:CreateSellListFrame()
     local closeBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("BOTTOMRIGHT", -10, 12)
-    closeBtn:SetText("Close")
+    closeBtn:SetText(IM:L("Close"))
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
     -- Dynamic event updates when vendor opens/closes
@@ -594,7 +594,7 @@ function IM:UpdateSellListFrame(filterMode)
         title:SetJustifyH("LEFT")
         
         local qColor = (IM.qualityColors and IM.qualityColors[item.quality]) or "|cFFFFFFFF"
-        title:SetText(qColor .. (item.name or "Unknown") .. "|r x" .. (item.totalCount or 1))
+        title:SetText(qColor .. (item.name or IM:L("Unknown")) .. "|r x" .. (item.totalCount or 1))
 
         -- Tooltip script handlers for the item name
         titleBtn:SetScript("OnEnter", function(self)
@@ -630,7 +630,7 @@ function IM:UpdateSellListFrame(filterMode)
         local removeBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
         removeBtn:SetSize(60, 18)
         removeBtn:SetPoint("RIGHT", -4, 0)
-        removeBtn:SetText("Remove")
+        removeBtn:SetText(IM:L("Remove"))
         removeBtn:SetScript("OnClick", function()
             IM:RemoveFromVendorList(itemID)
             IM:UpdateSellListFrame()
@@ -640,7 +640,7 @@ function IM:UpdateSellListFrame(filterMode)
 
     local totalCopper = math.floor(totalValue * 10000 + 0.5)
     local formattedTotal = IM.FormatMoneyWithIcons and IM:FormatMoneyWithIcons(totalCopper) or (totalCopper .. "c")
-    IM_SellListFrame.summary:SetText("Items queued: " .. count .. " | Total Value: " .. formattedTotal)
+    IM_SellListFrame.summary:SetText(IM:L("Items queued: %d | Total Value: %s", count, formattedTotal))
     child:SetHeight(math.max(1, count * (rowHeight + 2)))
 end
 
@@ -657,7 +657,7 @@ function IM:CreateIgnoredListFrame()
     if IM_IgnoredListFrame then return IM_IgnoredListFrame end
 
     local frame = CreateFrame("Frame", "IM_IgnoredListFrame", UIParent)
-    IM:StyleFrame(frame, 380, 420, "Inventory Manager — Ignored List")
+    IM:StyleFrame(frame, 380, 420, IM:L("Inventory Manager — Ignored List"))
 
     frame.summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.summary:SetPoint("TOPLEFT", 12, -32)
@@ -673,7 +673,7 @@ function IM:CreateIgnoredListFrame()
     local closeBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("BOTTOMRIGHT", -10, 12)
-    closeBtn:SetText("Close")
+    closeBtn:SetText(IM:L("Close"))
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
     IM_IgnoredListFrame = frame
@@ -720,7 +720,7 @@ function IM:UpdateIgnoredListFrame()
         local removeBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
         removeBtn:SetSize(60, 18)
         removeBtn:SetPoint("RIGHT", -4, 0)
-        removeBtn:SetText("Remove")
+        removeBtn:SetText(IM:L("Remove"))
         removeBtn:SetScript("OnClick", function()
             IM:RemoveFromIgnoredList(itemID)
             IM:UpdateIgnoredListFrame()
@@ -729,7 +729,7 @@ function IM:UpdateIgnoredListFrame()
         SetTextTooltip(removeBtn, "Remove Item", "Removes this item from the Ignore List.")
     end
 
-    IM_IgnoredListFrame.summary:SetText("Total Ignored Items: " .. count)
+    IM_IgnoredListFrame.summary:SetText(IM:L("Total Ignored Items: %d", count))
     child:SetHeight(math.max(1, count * (rowHeight + 2)))
 end
 
@@ -746,7 +746,7 @@ function IM:CreateAutoListFrame()
     if IM_AutoListFrame then return IM_AutoListFrame end
 
     local frame = CreateFrame("Frame", "IM_AutoListFrame", UIParent)
-    IM:StyleFrame(frame, 380, 420, "Inventory Manager — Auto-Action List")
+    IM:StyleFrame(frame, 380, 420, IM:L("Inventory Manager — Auto-Action List"))
 
     frame.summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.summary:SetPoint("TOPLEFT", 12, -32)
@@ -762,7 +762,7 @@ function IM:CreateAutoListFrame()
     local closeBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("BOTTOMRIGHT", -10, 12)
-    closeBtn:SetText("Close")
+    closeBtn:SetText(IM:L("Close"))
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
     IM_AutoListFrame = frame
@@ -809,7 +809,7 @@ function IM:UpdateAutoListFrame()
         local removeBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
         removeBtn:SetSize(60, 18)
         removeBtn:SetPoint("RIGHT", -4, 0)
-        removeBtn:SetText("Remove")
+        removeBtn:SetText(IM:L("Remove"))
         removeBtn:SetScript("OnClick", function()
             IM:RemoveFromAutoDeleteList(itemID)
             IM:UpdateAutoListFrame()
@@ -818,7 +818,7 @@ function IM:UpdateAutoListFrame()
         SetTextTooltip(removeBtn, "Remove Item", "Removes this item from the Auto-Action List.")
     end
 
-    IM_AutoListFrame.summary:SetText("Total Auto-Action Items: " .. count)
+    IM_AutoListFrame.summary:SetText(IM:L("Total Auto-Action Items: %d", count))
     child:SetHeight(math.max(1, count * (rowHeight + 2)))
 end
 

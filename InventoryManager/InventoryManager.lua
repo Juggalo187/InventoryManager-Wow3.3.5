@@ -246,7 +246,7 @@ function IM:ValidateAutoDeleteList()
     end
     
     if removedCount > 0 then
-        print(string.format("Inventory Manager: Removed %d invalid entries from auto-delete list", removedCount))
+        print(IM:L("Inventory Manager: Removed %d invalid entries from auto-delete list", removedCount))
         self:SaveConfig()
     end
     
@@ -257,7 +257,7 @@ end
 function IM:ExportAutoDeleteList()
     self:InitDB()
     if next(self.db.autoDeleteList) == nil then
-        print("Inventory Manager: Auto-delete list is empty, nothing to export.")
+        print(IM:L("Inventory Manager: Auto-delete list is empty, nothing to export."))
         return
     end
     
@@ -275,7 +275,7 @@ function IM:ExportAutoDeleteList()
     end
     
     local exportString = "IM_AutoDelete_Export:" .. self:TableToString(exportData)
-    self:ShowExportFrame(exportString, "Auto-Delete List Export")
+    self:ShowExportFrame(exportString, IM:L("Auto-Delete List Export"))
 end
 
 function IM:ShowExportFrame(text, title)
@@ -295,7 +295,7 @@ function IM:ShowExportFrame(text, title)
     IM_ExportFrame.exportText:SetFocus()
     
     IM_ExportFrame:Show()
-    print("Inventory Manager: Export window opened. Press Ctrl+C to copy the text.")
+    print(IM:L("Inventory Manager: Export window opened. Press Ctrl+C to copy the text."))
 end
 
 function IM:CreateExportFrame()
@@ -317,7 +317,7 @@ function IM:CreateExportFrame()
     
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     frame.title:SetPoint("TOP", 0, -10)
-    frame.title:SetText("Export Auto-Delete List")
+    frame.title:SetText(IM:L("Export Auto-Delete List"))
     
     frame.closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     frame.closeBtn:SetPoint("TOPRIGHT", -5, -5)
@@ -337,7 +337,7 @@ function IM:CreateExportFrame()
     local closeBottomBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     closeBottomBtn:SetSize(90, 22)
     closeBottomBtn:SetPoint("BOTTOM", 0, 12)
-    closeBottomBtn:SetText("Close")
+    closeBottomBtn:SetText(IM:L("Close"))
     closeBottomBtn:SetScript("OnClick", function() frame:Hide() end)
     
     IM_ExportFrame = frame
@@ -346,12 +346,12 @@ end
 
 function IM:ImportAutoDeleteList(importString)
     if not importString or importString == "" then
-        self:ShowImportMessage("No import data provided.", true)
+        self:ShowImportMessage(IM:L("No import data provided."), true)
         return false
     end
     
     if not strfind(importString, "IM_AutoDelete_Export:") then
-        self:ShowImportMessage("Invalid import format. Please use a valid export string.", true)
+        self:ShowImportMessage(IM:L("Invalid import format. Please use a valid export string."), true)
         return false
     end
     
@@ -359,7 +359,7 @@ function IM:ImportAutoDeleteList(importString)
     local success, importData = pcall(self.StringToTable, self, dataString)
     
     if not success or not importData or not importData.items then
-        self:ShowImportMessage("Failed to parse import data. The string may be corrupted.", true)
+        self:ShowImportMessage(IM:L("Failed to parse import data. The string may be corrupted."), true)
         return false
     end
     
@@ -389,9 +389,9 @@ function IM:ImportAutoDeleteList(importString)
         IM:UpdateAutoListFrame()
     end
     
-    local message = string.format("Successfully imported %d items", importedCount)
+    local message = IM:L("Successfully imported %d items", importedCount)
     if skippedCount > 0 then
-        message = message .. string.format(", skipped %d duplicates", skippedCount)
+        message = message .. IM:L(", skipped %d duplicates", skippedCount)
     end
     message = message .. "."
     
@@ -401,7 +401,7 @@ end
 
 function IM:ShowImportMessage(message, isError)
     local color = isError and "|cFFFF0000" or "|cFF00FF00"
-    print("Inventory Manager: " .. color .. message .. "|r")
+    print(IM:L("Inventory Manager: ") .. color .. message .. "|r")
     
     if IM_ImportFrame and IM_ImportFrame.infoText then
         IM_ImportFrame.infoText:SetText(message)
@@ -422,7 +422,7 @@ function IM:ShowImportAutoDeleteDialog()
     IM_ImportFrame.importText:SetFocus()
     IM_ImportFrame:Show()
     
-    print("Inventory Manager: Import window opened. Paste your export string and click Import.")
+    print(IM:L("Inventory Manager: Import window opened. Paste your export string and click Import."))
 end
 
 function IM:CreateImportFrame()
@@ -444,7 +444,7 @@ function IM:CreateImportFrame()
     
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     frame.title:SetPoint("TOP", 0, -8)
-    frame.title:SetText("Import Auto-Delete List")
+    frame.title:SetText(IM:L("Import Auto-Delete List"))
     
     frame.closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     frame.closeBtn:SetSize(32, 32)
@@ -453,7 +453,7 @@ function IM:CreateImportFrame()
     
     frame.instructions = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.instructions:SetPoint("TOP", 0, -30)
-    frame.instructions:SetText("Paste your auto-delete list export string below:")
+    frame.instructions:SetText(IM:L("Paste your auto-delete list export string below:"))
     
     frame.scroll = CreateFrame("ScrollFrame", "IM_ImportScroll", frame, "UIPanelScrollFrameTemplate")
     frame.scroll:SetPoint("TOPLEFT", 10, -55)
@@ -471,7 +471,7 @@ function IM:CreateImportFrame()
     frame.importBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     frame.importBtn:SetSize(100, 25)
     frame.importBtn:SetPoint("BOTTOMLEFT", 10, 10)
-    frame.importBtn:SetText("Import")
+    frame.importBtn:SetText(IM:L("Import"))
     frame.importBtn:SetScript("OnClick", function()
         local importString = frame.importText:GetText()
         if IM:ImportAutoDeleteList(importString) then
@@ -482,7 +482,7 @@ function IM:CreateImportFrame()
     frame.clearBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     frame.clearBtn:SetSize(80, 25)
     frame.clearBtn:SetPoint("BOTTOM", 0, 10)
-    frame.clearBtn:SetText("Clear")
+    frame.clearBtn:SetText(IM:L("Clear"))
     frame.clearBtn:SetScript("OnClick", function()
         frame.importText:SetText("")
         frame.importText:SetFocus()
@@ -491,12 +491,12 @@ function IM:CreateImportFrame()
     frame.closeBottomBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     frame.closeBottomBtn:SetSize(80, 25)
     frame.closeBottomBtn:SetPoint("BOTTOMRIGHT", -10, 10)
-    frame.closeBottomBtn:SetText("Close")
+    frame.closeBottomBtn:SetText(IM:L("Close"))
     frame.closeBottomBtn:SetScript("OnClick", function() frame:Hide() end)
     
     frame.infoText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.infoText:SetPoint("BOTTOM", 0, 35)
-    frame.infoText:SetText("Paste your export string and click Import")
+    frame.infoText:SetText(IM:L("Paste your export string and click Import"))
     frame.infoText:SetTextColor(0.8, 0.8, 0.8)
     
     IM_ImportFrame = frame
@@ -816,7 +816,7 @@ function IM:CheckBagSpaceAndOpen()
         if not (IM_MainFrame and IM_MainFrame:IsShown()) and not merchantShowing then
             self:CreateFrames()
             self:ShowSuggestions()
-            print(string.format("Inventory Manager: Auto-opened (only %d free slots)", freeSlots))
+            print(IM:L("Inventory Manager: Auto-opened (only %d free slots)", freeSlots))
         end
     end
 end
@@ -1026,7 +1026,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
     
     if usingFallbackData then
         itemInfo.shouldSuggestDelete = false
-        itemInfo.reason = "Incomplete item data - waiting for full info"
+        itemInfo.reason = IM:L("Incomplete item data - waiting for full info")
         return itemInfo
     end
 	
@@ -1093,12 +1093,12 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         if self.db.ignoreGearValue then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 2
-            itemInfo.reason = "Gear (value ignored)"
+            itemInfo.reason = IM:L("Gear (value ignored)")
         else
             if itemValueCopper < minItemValueCopper then
                 itemInfo.shouldSuggestDelete = true
                 itemInfo.priority = 2
-                itemInfo.reason = "Low value gear"
+                itemInfo.reason = IM:L("Low value gear")
             else
                 itemInfo.shouldSuggestDelete = false
             end
@@ -1109,7 +1109,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 1
-            itemInfo.reason = "Vendor trash"
+            itemInfo.reason = IM:L("Vendor trash")
         else
             itemInfo.shouldSuggestDelete = false
         end
@@ -1135,7 +1135,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 3
-            itemInfo.reason = "Low value " .. tradeGoodsCategory:lower()
+            itemInfo.reason = IM:L("Low value %s", IM:L(tradeGoodsCategory):lower())
         else
             itemInfo.shouldSuggestDelete = false
         end
@@ -1149,7 +1149,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 3.5
-            itemInfo.reason = "Low value gem"
+            itemInfo.reason = IM:L("Low value gem")
         else
             itemInfo.shouldSuggestDelete = false
         end
@@ -1159,7 +1159,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 4
-            itemInfo.reason = "Low value Recipe"
+            itemInfo.reason = IM:L("Low value Recipe")
         else
             itemInfo.shouldSuggestDelete = false
         end
@@ -1169,7 +1169,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         if itemValueCopper < minItemValueCopper then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 5
-            itemInfo.reason = "Low value consumable"
+            itemInfo.reason = IM:L("Low value consumable")
         else
             itemInfo.shouldSuggestDelete = false
         end
@@ -1180,7 +1180,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
             if itemValueCopper < minItemValueCopper then
                 itemInfo.shouldSuggestDelete = true
                 itemInfo.priority = 6
-                itemInfo.reason = "Low value Misc Item"
+                itemInfo.reason = IM:L("Low value Misc Item")
             else
                 itemInfo.shouldSuggestDelete = false
             end
@@ -1192,7 +1192,7 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
     for _, importantName in ipairs(importantItems) do
         if itemInfo.name and string.find(itemInfo.name, importantName) then
             itemInfo.shouldSuggestDelete = false
-            itemInfo.reason = "Important item - never delete"
+            itemInfo.reason = IM:L("Important item - never delete")
             break
         end
     end
@@ -1209,11 +1209,11 @@ function IM:AnalyzeItem(bag, slot, itemID, count, quality, link, playerGold, pla
         if itemValueCopper < minItemValueCopper and not isImportantItem then
             itemInfo.shouldSuggestDelete = true
             itemInfo.priority = 7
-            itemInfo.reason = "Low value " .. (itemInfo.type:lower() or "item")
+            itemInfo.reason = IM:L("Low value %s", IM:L(itemInfo.type):lower())
             
             if not self.detectedTypes[itemInfo.type] then
                 self.detectedTypes[itemInfo.type] = true
-                print(string.format("Inventory Manager: Now suggesting %s items based on your value threshold", itemInfo.type))
+                print(IM:L("Inventory Manager: Now suggesting %s items based on your value threshold", IM:L(itemInfo.type)))
             end
         end
     end
@@ -1259,7 +1259,7 @@ function IM:ClearAutoDeleteList()
     if IM_AutoListFrame and IM_AutoListFrame:IsShown() then
         IM:UpdateAutoListFrame()
     end
-    print("Inventory Manager: Auto-delete list cleared")
+    print(IM:L("Inventory Manager: Auto-delete list cleared"))
 end
 
 function IM:AddToIgnoredList(item)
@@ -1350,7 +1350,7 @@ end
 
 function IM:ConfirmDeleteSuggestion(suggestion)
     StaticPopupDialogs["IM_CONFIRM_DELETE_SINGLE"] = {
-        text = string.format("Are you sure you want to delete %s? This action cannot be undone!", suggestion.displayName or suggestion.name),
+        text = IM:L("Are you sure you want to delete %s? This action cannot be undone!", suggestion.displayName or suggestion.name),
         button1 = "Yes",
         button2 = "No",
         OnAccept = function()
@@ -1366,7 +1366,7 @@ end
 
 function IM:DeleteSuggestion(suggestion)
     if InCombatLockdown() then
-        print("Inventory Manager: Cannot delete items during combat")
+        print(IM:L("Inventory Manager: Cannot delete items during combat"))
         return
     end
     
@@ -1383,13 +1383,13 @@ function IM:DeleteSuggestion(suggestion)
                 totalItems = totalItems + count
             end)
             if not success then
-                print("Inventory Manager: Failed to delete item - protected action")
+                print(IM:L("Inventory Manager: Failed to delete item - protected action"))
             end
         end
     end
     
     if deletedCount > 0 then
-        print(string.format("Inventory Manager: Deleted %s (%d items)", suggestion.displayName or suggestion.name, totalItems))
+        print(IM:L("Inventory Manager: Deleted %s (%d items)", suggestion.displayName or suggestion.name, totalItems))
         self:LogDeletion(suggestion.link or suggestion.name, totalItems, "manual")
         self:ScheduleRefresh()
     end
@@ -1425,7 +1425,7 @@ function IM:ProcessAutoDeleteItems()
     end
     
     if deletedSlots > 0 then
-        local message = "Inventory Manager: Auto-deleted "
+        local message = IM:L("Inventory Manager: Auto-deleted ")
         local firstItem = true
         
         for itemLink, itemCount in pairs(deletedItems) do
@@ -1438,7 +1438,7 @@ function IM:ProcessAutoDeleteItems()
             self:LogDeletion(itemLink, itemCount, "auto")
         end
         
-        message = message .. string.format(" (%d slots)", deletedSlots)
+        message = message .. IM:L(" (%d slots)", deletedSlots)
         print(message)
     end
 end
@@ -1446,7 +1446,7 @@ end
 function IM:ConfirmDeleteAll()
     local suggestions = self:ScanInventory()
     if #suggestions == 0 then
-        print("Inventory Manager: No items to delete.")
+        print(IM:L("Inventory Manager: No items to delete."))
         return
     end
     
@@ -1456,7 +1456,7 @@ function IM:ConfirmDeleteAll()
     end
     
     StaticPopupDialogs["IM_CONFIRM_DELETE_ALL"] = {
-        text = string.format("Are you sure you want to delete ALL %d suggested items (%d individual items)? This action cannot be undone!", #suggestions, totalItems),
+        text = IM:L("Are you sure you want to delete ALL %d suggested items (%d individual items)? This action cannot be undone!", #suggestions, totalItems),
         button1 = "Yes",
         button2 = "No",
         OnAccept = function()
@@ -1493,10 +1493,10 @@ function IM:DeleteAllSuggestions()
     end
     
     if deletedCount > 0 then
-        print(string.format("Inventory Manager: Deleted %d items (%d Bag Slots)", totalItems, deletedCount))
+        print(IM:L("Inventory Manager: Deleted %d items (%d Bag Slots)", totalItems, deletedCount))
         self:ScheduleRefresh()
     else
-        print("Inventory Manager: No items could be deleted.")
+        print(IM:L("Inventory Manager: No items could be deleted."))
     end
 end
 
@@ -1576,7 +1576,7 @@ function IM:SellVendorItems()
     if stacksSold > 0 then
         local totalCopper = math.floor(totalValue * 10000 + 0.5)
         local formattedValue = self:FormatMoneyWithIcons(totalCopper)
-        print(string.format("Inventory Manager: Sold %d items (%d slots) for %s", itemsSold, stacksSold, formattedValue))
+        print(IM:L("Inventory Manager: Sold %d items (%d slots) for %s", itemsSold, stacksSold, formattedValue))
 
         self:RefreshVendorListLocations()
         IM:RefreshUI()
@@ -1584,7 +1584,7 @@ function IM:SellVendorItems()
             self:UpdateSellListFrame()
         end
     else
-        print("Inventory Manager: No items to sell.")
+        print(IM:L("Inventory Manager: No items to sell."))
     end
 end
 

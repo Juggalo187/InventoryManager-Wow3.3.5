@@ -1,7 +1,18 @@
 ## Interface: 30300
 ## Title: Inventory Manager
+## Title-deDE: Inventarverwaltung
+## Title-frFR: Gestionnaire d'inventaire
+## Title-esES: Gestor de inventario
+## Title-esMX: Administrador de inventario
+## Title-ruRU: Менеджер инвентаря
+## Title-koKR: 인벤토리 관리자
+## Title-zhCN: 背包管理器
+## Title-zhTW: 背包管理員
 ## Version: 1.1
 ## SavedVariables: IM_ConfigDB
+
+# Localization must load before addon UI
+InventoryManager_Locales.lua
 
 # UI Helpers must load first
 InventoryManager_UI.lua
