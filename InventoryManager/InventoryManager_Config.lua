@@ -14,6 +14,61 @@ local function SetCheckboxText(cb, text)
     end
 end
 
+function IM:SetFreeSlotsThreshold(value)
+    value = tonumber(value) or 1
+    if value ~= value or value == math.huge or value == -math.huge then
+        value = 1
+    end
+    value = math.max(0, math.min(10, math.floor(value)))
+    self.db.freeSlotsThreshold = value
+    self:SaveConfig()
+
+    local sliderNames = {
+        "IM_LowSpaceThresholdSlider",
+        "IM_Cfg_FreeSlotsSlider",
+    }
+    for _, name in ipairs(sliderNames) do
+        local slider = _G[name]
+        if slider and slider:GetValue() ~= value then
+            slider:SetValue(value)
+        end
+    end
+end
+
+function IM:SetAutoOpenOnLowSpace(enabled)
+    self.db.autoOpenOnLowSpace = enabled and true or false
+    self:SaveConfig()
+
+    local checkboxNames = {
+        "IM_SimpleAutoOpenCB",
+        "IM_Cfg_AutoOpenCB",
+    }
+    for _, name in ipairs(checkboxNames) do
+        local checkbox = _G[name]
+        if checkbox then
+            checkbox:SetChecked(self.db.autoOpenOnLowSpace)
+        end
+    end
+
+    local sliderNames = {
+        "IM_LowSpaceThresholdSlider",
+        "IM_Cfg_FreeSlotsSlider",
+    }
+    for _, name in ipairs(sliderNames) do
+        local slider = _G[name]
+        if slider then
+            local label = _G[name .. "Text"]
+            if self.db.autoOpenOnLowSpace then
+                slider:Enable()
+                if label then label:SetTextColor(1, 0.82, 0) end
+            else
+                slider:Disable()
+                if label then label:SetTextColor(0.5, 0.5, 0.5) end
+            end
+        end
+    end
+end
+
 function IM:CreateConfigPanel()
     if IM_ConfigFrame then return IM_ConfigFrame end
 
@@ -27,7 +82,7 @@ function IM:CreateConfigPanel()
 
     frame.scrollChild = CreateFrame("Frame", "IM_ConfigScrollChild")
     frame.scrollChild:SetWidth(500)
-    frame.scrollChild:SetHeight(680)
+    frame.scrollChild:SetHeight(720)
     frame.scroll:SetScrollChild(frame.scrollChild)
 
     -- Scrollbar positioning
@@ -139,7 +194,7 @@ function IM:CreateConfigPanel()
     ---------------------------------------------------------
     local valLabel = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     valLabel:SetPoint("TOPLEFT", 15, -355)
-    valLabel:SetText("Ignore items worth more than:")
+    valLabel:SetText("Suggest items worth less than:")
 
     local goldInput = CreateFrame("EditBox", "IM_Cfg_MinGoldEditBox", frame.scrollChild, "InputBoxTemplate")
     goldInput:SetSize(60, 20)
@@ -152,9 +207,20 @@ function IM:CreateConfigPanel()
     goldSymbol:SetPoint("LEFT", goldInput, "RIGHT", 5, 0)
     goldSymbol:SetText("Gold")
 
+    local goldError = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    goldError:SetPoint("TOPLEFT", 15, -378)
+    goldError:SetTextColor(1, 0.35, 0.35)
+
     goldInput:SetScript("OnEnterPressed", function(s)
-        local val = tonumber(s:GetText()) or 0.25
+        local val = tonumber(s:GetText())
+        if not val or val ~= val or val < 0 or val == math.huge then
+            goldError:SetText("Enter a valid, non-negative value in gold.")
+            return
+        end
+
         IM.db.minItemValue = val
+        goldError:SetText("")
+        s:SetText(string.format("%.2f", val))
         IM:SaveConfig()
         IM:RefreshUI()
         s:ClearFocus()
@@ -162,7 +228,7 @@ function IM:CreateConfigPanel()
 
     -- Automation Checkboxes
     local autoSellCB = CreateFrame("CheckButton", "IM_Cfg_AutoSellCB", frame.scrollChild, "OptionsCheckButtonTemplate")
-    autoSellCB:SetPoint("TOPLEFT", 15, -390)
+    autoSellCB:SetPoint("TOPLEFT", 15, -400)
     SetCheckboxText(autoSellCB, "Auto-sell vendor trash at merchant")
     autoSellCB:SetChecked(self.db.autoSellAtVendor)
     autoSellCB:SetScript("OnClick", function(s)
@@ -171,7 +237,7 @@ function IM:CreateConfigPanel()
     end)
 
     local showSellCB = CreateFrame("CheckButton", "IM_Cfg_ShowSellCB", frame.scrollChild, "OptionsCheckButtonTemplate")
-    showSellCB:SetPoint("TOPLEFT", 15, -416)
+    showSellCB:SetPoint("TOPLEFT", 15, -426)
     SetCheckboxText(showSellCB, "Show Sell List panel at vendor")
     showSellCB:SetChecked(self.db.showSellListAtVendor)
     showSellCB:SetScript("OnClick", function(s)
@@ -180,22 +246,48 @@ function IM:CreateConfigPanel()
     end)
 
     local autoOpenCB = CreateFrame("CheckButton", "IM_Cfg_AutoOpenCB", frame.scrollChild, "OptionsCheckButtonTemplate")
-    autoOpenCB:SetPoint("TOPLEFT", 15, -442)
+    autoOpenCB:SetPoint("TOPLEFT", 15, -452)
     SetCheckboxText(autoOpenCB, "Auto-open suggestion window when free bag slots are low")
     autoOpenCB:SetChecked(self.db.autoOpenOnLowSpace)
     autoOpenCB:SetScript("OnClick", function(s)
-        IM.db.autoOpenOnLowSpace = s:GetChecked() and true or false
-        IM:SaveConfig()
+        IM:SetAutoOpenOnLowSpace(s:GetChecked())
     end)
 
     local autoDeleteCB = CreateFrame("CheckButton", "IM_Cfg_AutoDeleteCB", frame.scrollChild, "OptionsCheckButtonTemplate")
-    autoDeleteCB:SetPoint("TOPLEFT", 15, -468)
-    SetCheckboxText(autoDeleteCB, "Enable Auto-Delete list background processing")
+    autoDeleteCB:SetPoint("TOPLEFT", 15, -478)
+    SetCheckboxText(autoDeleteCB, "Automatically delete items on the Auto-Delete list")
     autoDeleteCB:SetChecked(self.db.autoDeleteEnabled)
     autoDeleteCB:SetScript("OnClick", function(s)
         IM.db.autoDeleteEnabled = s:GetChecked() and true or false
         IM:SaveConfig()
     end)
+
+    local autoDeleteWarning = frame.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    autoDeleteWarning:SetPoint("TOPLEFT", 42, -503)
+    autoDeleteWarning:SetWidth(440)
+    autoDeleteWarning:SetJustifyH("LEFT")
+    autoDeleteWarning:SetText("Warning: matching items are permanently deleted from your bags without another prompt.")
+    autoDeleteWarning:SetTextColor(1, 0.55, 0.35)
+
+    IM:SetFreeSlotsThreshold(self.db.freeSlotsThreshold or 1)
+    local freeSlotsSlider = CreateFrame("Slider", "IM_Cfg_FreeSlotsSlider", frame.scrollChild, "OptionsSliderTemplate")
+    freeSlotsSlider:SetPoint("TOPLEFT", 25, -550)
+    freeSlotsSlider:SetSize(190, 16)
+    freeSlotsSlider:SetMinMaxValues(0, 10)
+    freeSlotsSlider:SetValueStep(1)
+    freeSlotsSlider:SetValue(self.db.freeSlotsThreshold or 1)
+    _G[freeSlotsSlider:GetName() .. "Text"]:SetText("Open at or below: " .. (self.db.freeSlotsThreshold or 1) .. " free slots")
+    _G[freeSlotsSlider:GetName() .. "Low"]:SetText("0")
+    _G[freeSlotsSlider:GetName() .. "High"]:SetText("10")
+    freeSlotsSlider:SetScript("OnValueChanged", function(slider, value)
+        local threshold = math.floor(value)
+        _G[slider:GetName() .. "Text"]:SetText("Open at or below: " .. threshold .. " free slots")
+        IM:SetFreeSlotsThreshold(threshold)
+    end)
+    if not self.db.autoOpenOnLowSpace then
+        freeSlotsSlider:Disable()
+        _G[freeSlotsSlider:GetName() .. "Text"]:SetTextColor(0.5, 0.5, 0.5)
+    end
 
     ---------------------------------------------------------
     -- Bottom Action Buttons
@@ -215,7 +307,7 @@ function IM:CreateConfigPanel()
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
     StaticPopupDialogs["IM_CONFIRM_RESET"] = {
-        text = "Reset Inventory Manager configuration to defaults?",
+        text = "Reset Inventory Manager configuration to defaults? The interface will reload to apply the reset.",
         button1 = "Yes",
         button2 = "No",
         OnAccept = function()

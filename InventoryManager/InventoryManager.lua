@@ -207,15 +207,16 @@ end
 function IM:ScheduleRefresh()
     if not self.refreshTimer then
         self.refreshTimer = CreateFrame("Frame")
-        self.refreshTimer:SetScript("OnUpdate", function(f, elapsed)
-            f.elapsed = (f.elapsed or 0) + elapsed
-            if f.elapsed >= 0.2 then
-                f:SetScript("OnUpdate", nil)
-                f.elapsed = 0
-                IM:RefreshUI()
-            end
-        end)
     end
+    self.refreshTimer.elapsed = 0
+    self.refreshTimer:SetScript("OnUpdate", function(f, elapsed)
+        f.elapsed = f.elapsed + elapsed
+        if f.elapsed >= 0.2 then
+            f:SetScript("OnUpdate", nil)
+            f.elapsed = 0
+            IM:RefreshUI()
+        end
+    end)
 end
 
 function IM:IsValidItemData(itemData)
@@ -301,6 +302,7 @@ function IM:CreateExportFrame()
     if IM_ExportFrame then return IM_ExportFrame end
     
     local frame = CreateFrame("Frame", "IM_ExportFrame", UIParent)
+    IM:RegisterEscapeClose(frame)
     frame:SetSize(500, 350)
     frame:SetPoint("CENTER", 0, 0)
     frame:SetMovable(true)
@@ -427,6 +429,7 @@ function IM:CreateImportFrame()
     if IM_ImportFrame then return IM_ImportFrame end
     
     local frame = CreateFrame("Frame", "IM_ImportFrame", UIParent)
+    IM:RegisterEscapeClose(frame)
     frame:SetSize(500, 400)
     frame:SetPoint("CENTER", 0, 0)
     frame:SetMovable(true)
@@ -488,8 +491,8 @@ function IM:CreateImportFrame()
     frame.closeBottomBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     frame.closeBottomBtn:SetSize(80, 25)
     frame.closeBottomBtn:SetPoint("BOTTOMRIGHT", -10, 10)
-    closeBottomBtn:SetText("Close")
-    closeBottomBtn:SetScript("OnClick", function() frame:Hide() end)
+    frame.closeBottomBtn:SetText("Close")
+    frame.closeBottomBtn:SetScript("OnClick", function() frame:Hide() end)
     
     frame.infoText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.infoText:SetPoint("BOTTOM", 0, 35)
@@ -1684,6 +1687,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         if IM_ADDON_LOADED and IM.db then
             if IM.CheckBagSpaceAndOpen then IM:CheckBagSpaceAndOpen() end
             if IM.ProcessAutoDeleteItems then IM:ProcessAutoDeleteItems() end
+            if IM_MainFrame and IM_MainFrame:IsShown() then
+                IM:RefreshUI()
+            end
         end
 
     -- Add vendor event handling:

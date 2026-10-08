@@ -202,7 +202,7 @@ function IM:CreateSimpleSettingsFrame()
     autoOpenCB:SetChecked(IM.db.autoOpenOnLowSpace)
 
     -- Free Slot Threshold Slider (unified to freeSlotsThreshold)
-    IM.db.freeSlotsThreshold = IM.db.freeSlotsThreshold or 1
+    IM:SetFreeSlotsThreshold(IM.db.freeSlotsThreshold or 1)
 
     local thresholdSlider = CreateFrame("Slider", "IM_LowSpaceThresholdSlider", frame, "OptionsSliderTemplate")
     thresholdSlider:SetPoint("TOPLEFT", 25, -130)
@@ -215,30 +215,17 @@ function IM:CreateSimpleSettingsFrame()
     _G[thresholdSlider:GetName().."Low"]:SetText("0")
     _G[thresholdSlider:GetName().."High"]:SetText("10")
 
-    local function ToggleSliderState(enabled)
-        if enabled then
-            thresholdSlider:Enable()
-            _G[thresholdSlider:GetName().."Text"]:SetTextColor(1, 0.82, 0)
-        else
-            thresholdSlider:Disable()
-            _G[thresholdSlider:GetName().."Text"]:SetTextColor(0.5, 0.5, 0.5)
-        end
-    end
-
     autoOpenCB:SetScript("OnClick", function(s)
-        IM.db.autoOpenOnLowSpace = s:GetChecked() and true or false
-        ToggleSliderState(IM.db.autoOpenOnLowSpace)
-        if IM.SaveConfig then IM:SaveConfig() end
+        IM:SetAutoOpenOnLowSpace(s:GetChecked())
     end)
 
     thresholdSlider:SetScript("OnValueChanged", function(self, value)
         local val = math.floor(value)
-        IM.db.freeSlotsThreshold = val
         _G[self:GetName().."Text"]:SetText("Trigger at: " .. val .. " free slots")
-        if IM.SaveConfig then IM:SaveConfig() end
+        IM:SetFreeSlotsThreshold(val)
     end)
 
-    ToggleSliderState(IM.db.autoOpenOnLowSpace)
+    IM:SetAutoOpenOnLowSpace(IM.db.autoOpenOnLowSpace)
 
     -- Full Config Button
     local configBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")

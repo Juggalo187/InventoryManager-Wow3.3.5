@@ -1,6 +1,18 @@
 local addonName, IM = ...
 
+function IM:RegisterEscapeClose(frame)
+    local frameName = frame:GetName()
+    if not frameName then return end
+
+    for _, specialFrameName in ipairs(UISpecialFrames) do
+        if specialFrameName == frameName then return end
+    end
+
+    table.insert(UISpecialFrames, frameName)
+end
+
 function IM:StyleFrame(frame, width, height, titleText)
+    self:RegisterEscapeClose(frame)
     frame:SetSize(width, height)
     frame:SetMovable(true)
     frame:EnableMouse(true)
